@@ -64,9 +64,15 @@ const VersionModal = ({ onClose, version }) => (
         className="footer-logo"
         src={`${urlBase}/favicon.ico`}
       />{' '}
-      slskd
+      slskd, modified
     </Modal.Header>
     <Modal.Content>
+      {/* the notice the licence asks of a modified version (Additional Terms
+          3a), in its own words, before anything else the modal says */}
+      <p className="footer-modified-notice">
+        This is a modified version of slskd. It is not maintained by, endorsed
+        by, or affiliated with the slskd project or its author(s).
+      </p>
       <Table
         basic="very"
         compact
@@ -99,6 +105,20 @@ const VersionModal = ({ onClose, version }) => (
           </Table.Row>
           <Table.Row>
             <Table.Cell>Source</Table.Cell>
+            <Table.Cell>
+              {/* this version's source, which is what the AGPL obliges us to
+                  offer; upstream's is where it comes from, not where it is */}
+              <a
+                href="https://github.com/deviationist/slskd"
+                rel="noreferrer"
+                target="_blank"
+              >
+                github.com/deviationist/slskd
+              </a>
+            </Table.Cell>
+          </Table.Row>
+          <Table.Row>
+            <Table.Cell>Based on</Table.Cell>
             <Table.Cell>
               <a
                 href="https://github.com/slskd/slskd"
@@ -192,7 +212,10 @@ const AppFooter = ({
           as="button"
           className="footer-about"
           onClick={() => setShowingVersion(true)}
-          title={[current ? `slskd ${current}` : 'slskd', build]
+          title={[
+            current ? `slskd ${current}, modified` : 'slskd, modified',
+            build,
+          ]
             .filter(Boolean)
             .join(', ')}
           type="button"
