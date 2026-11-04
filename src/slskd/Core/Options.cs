@@ -2699,7 +2699,7 @@ namespace slskd
             /// </remarks>
             [Argument(default, "offline-message")]
             [EnvironmentVariable("OFFLINE_MESSAGE")]
-            [Description("message the installed web app shows when slskd cannot be reached; blank is generic")]
+            [Description("message the installed web app shows when cratedig cannot be reached; blank is generic")]
             [StringLength(2000)]
             public string OfflineMessage { get; init; }
 
@@ -3566,7 +3566,7 @@ namespace slskd
                 [Argument(default, "pushbullet-prefix")]
                 [EnvironmentVariable("PUSHBULLET_NOTIFICATION_PREFIX")]
                 [Description("prefix for Pushbullet notification titles")]
-                public string NotificationPrefix { get; init; } = "From slskd:";
+                public string NotificationPrefix { get; init; } = "From cratedig:";
 
                 /// <summary>
                 ///     Gets a value indicating whether a Pushbullet notification should be sent when a private message is received.

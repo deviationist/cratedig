@@ -33,7 +33,7 @@ namespace slskd.Tests.Unit.Integrations.Notifications
             await notifier.CheckAsync(Connection(watchdog: true, loggedIn: true), T0.AddMinutes(31));
 
             Assert.Equal(
-                ["slskd lost its Soulseek connection", "slskd is back on Soulseek"],
+                ["cratedig lost its Soulseek connection", "cratedig is back on Soulseek"],
                 Ntfy.Sent.Select(n => n.Title));
             Assert.Equal(NotificationPriority.High, Ntfy.Sent[0].Priority);
             Assert.Contains("31 minutes", Ntfy.Sent[1].Text);

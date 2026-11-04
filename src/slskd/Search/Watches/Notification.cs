@@ -82,7 +82,7 @@ public static class Notification
     /// <param name="count">The number of files found.</param>
     /// <returns>The subject.</returns>
     public static string SubjectFor(string searchText, int count)
-        => $"slskd: {count} new result{(count == 1 ? string.Empty : "s")} for '{searchText}'";
+        => $"cratedig: {count} new result{(count == 1 ? string.Empty : "s")} for '{searchText}'";
 
     /// <summary>
     ///     Composes the notification for a run.
