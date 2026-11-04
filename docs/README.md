@@ -1,5 +1,10 @@
 # Documentation
 
+> These are slskd's documentation pages, as cratedig inherits them, plus what this fork adds. Where they say
+> "slskd", that is the software cratedig is based on; configuration keys, `SLSKD_*` variables and `slskd.yml`
+> keep slskd's names in cratedig too. cratedig is a modified version of slskd and is not maintained by,
+> endorsed by, or affiliated with the slskd project or its author(s).
+
 ## Quick Start
 
 ### [System Requirements](https://github.com/slskd/slskd/blob/master/docs/system_requirements.md)

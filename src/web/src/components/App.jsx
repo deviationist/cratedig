@@ -135,7 +135,7 @@ const FIRST_PUSH_TIMEOUT = 3_000;
  */
 const UpdatePrompt = ({ closeToast }) => (
   <div className="client-update-prompt">
-    <div>A new version of slskd has been deployed.</div>
+    <div>A new version of cratedig has been deployed.</div>
     <div className="client-update-prompt-actions">
       <Button
         compact
@@ -564,7 +564,7 @@ class App extends Component {
         <ErrorSegment
           caption={
             <>
-              <span>Lost connection to slskd</span>
+              <span>Lost connection to cratedig</span>
               <br />
               <span>
                 {retriesExhausted ? 'Refresh to reconnect' : 'Retrying...'}

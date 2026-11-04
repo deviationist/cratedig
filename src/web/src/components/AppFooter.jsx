@@ -64,7 +64,7 @@ const VersionModal = ({ onClose, version }) => (
         className="footer-logo"
         src={`${urlBase}/favicon.ico`}
       />{' '}
-      slskd, modified
+      cratedig
     </Modal.Header>
     <Modal.Content>
       {/* the notice the licence asks of a modified version (Additional Terms
@@ -109,11 +109,11 @@ const VersionModal = ({ onClose, version }) => (
               {/* this version's source, which is what the AGPL obliges us to
                   offer; upstream's is where it comes from, not where it is */}
               <a
-                href="https://github.com/deviationist/slskd"
+                href="https://github.com/deviationist/cratedig"
                 rel="noreferrer"
                 target="_blank"
               >
-                github.com/deviationist/slskd
+                github.com/deviationist/cratedig
               </a>
             </Table.Cell>
           </Table.Row>
@@ -212,10 +212,7 @@ const AppFooter = ({
           as="button"
           className="footer-about"
           onClick={() => setShowingVersion(true)}
-          title={[
-            current ? `slskd ${current}, modified` : 'slskd, modified',
-            build,
-          ]
+          title={[current ? `cratedig ${current}` : 'cratedig', build]
             .filter(Boolean)
             .join(', ')}
           type="button"

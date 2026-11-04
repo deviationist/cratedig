@@ -377,7 +377,7 @@ export const describeUnretrievable = ({ file, gone = false }) => {
   }
 
   if (!file.localFilename) {
-    return 'This download finished before slskd recorded where it saved files, so it cannot be fetched';
+    return 'This download finished before cratedig recorded where it saved files, so it cannot be fetched';
   }
 
   return undefined;

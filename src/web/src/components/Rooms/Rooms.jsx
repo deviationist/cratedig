@@ -370,7 +370,7 @@ class Rooms extends Component {
                 {simulated && (
                   <span
                     className="room-simulated"
-                    title="Made by a simulated message: it exists only in slskd, and nothing said here leaves it"
+                    title="Made by a simulated message: it exists only in cratedig, and nothing said here leaves it"
                   >
                     test room
                   </span>

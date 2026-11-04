@@ -1,7 +1,7 @@
 {
-  "name": "slskd",
-  "short_name": "slskd",
-  "description": "A modern client-server application for the Soulseek file sharing network",
+  "name": "cratedig",
+  "short_name": "cratedig",
+  "description": "A modified version of slskd, for the Soulseek file sharing network",
   "start_url": "../",
   "scope": "../",
   "display": "standalone",

@@ -141,7 +141,7 @@ public class NotificationService
         var notification = new Notification
         {
             Event = NotificationEvent.Test,
-            Title = "slskd notifications work",
+            Title = "cratedig notifications work",
             Text = "This is a test notification. Nothing has happened; you asked for this one.",
         };
 

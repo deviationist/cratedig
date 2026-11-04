@@ -270,7 +270,7 @@ public class CompareProvider
 
         if (!InFlight.ContainsKey(key) && InFlight.Count >= MaximumInFlight)
         {
-            return new CompareAnswer(CompareState.Unavailable, Reason: $"slskd is already comparing {MaximumInFlight} sets of files; try again shortly");
+            return new CompareAnswer(CompareState.Unavailable, Reason: $"cratedig is already comparing {MaximumInFlight} sets of files; try again shortly");
         }
 
         var lazy = InFlight.GetOrAdd(key, _ => new Lazy<Task<CompareAnswer>>(() => AskAndKeepAsync(key, located, files)));

@@ -113,7 +113,7 @@ public class ProblemNotifier
                     connection = new Notification
                     {
                         Event = NotificationEvent.ConnectionLost,
-                        Title = "slskd lost its Soulseek connection",
+                        Title = "cratedig lost its Soulseek connection",
                         Text = $"Not logged in for {(int)(now - DownSince.Value).TotalMinutes} minutes, and still trying to reconnect.",
                         Priority = NotificationPriority.High,
                     };
@@ -126,7 +126,7 @@ public class ProblemNotifier
                     connection = new Notification
                     {
                         Event = NotificationEvent.ConnectionLost,
-                        Title = "slskd is back on Soulseek",
+                        Title = "cratedig is back on Soulseek",
                         Text = $"Logged in again after {(int)(now - DownSince.Value).TotalMinutes} minutes.",
                         Priority = NotificationPriority.Low,
                     };
@@ -141,7 +141,7 @@ public class ProblemNotifier
                 scan = new Notification
                 {
                     Event = NotificationEvent.ShareScanFailed,
-                    Title = "slskd's share scan failed",
+                    Title = "cratedig's share scan failed",
                     Text = "The shares could not be scanned. Peers see what was shared before; the log says why.",
                     Priority = NotificationPriority.High,
                 };

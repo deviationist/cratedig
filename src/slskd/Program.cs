@@ -6,8 +6,8 @@
 //   ┍━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ━━━━ ━  ━┉   ┉     ┉
 //   │ Copyright (c) JP Dillingham.
 //   │ Copyright (c) 2026 Robert S.
-//   │ Modified: registers this fork's services; modified-version startup notice; its own network
-//   │   version identifier
+//   │ Modified: registers this fork's services; modified-version startup notice; its own name,
+//   │   issue tracker and network version identifier
 //   │
 //   │ This program is free software: you can redistribute it and/or modify
 //   │ it under the terms of the GNU Affero General Public License as published
@@ -128,7 +128,7 @@ namespace slskd
         /// <summary>
         ///     The url to the issues/support site.
         /// </summary>
-        public static readonly string IssuesUrl = "https://github.com/slskd/slskd/issues";
+        public static readonly string IssuesUrl = "https://github.com/deviationist/cratedig/issues";
 
         /// <summary>
         ///     The global prefix for environment variables.
@@ -1863,7 +1863,7 @@ services.AddSingleton<slskd.Player.AnalysisProvider>();
                 // notices below it are upstream's and stay as they are (2a).
                 var banner = @$"
   ┌──────────────────────────────────────────────────────┐
-  │  slskd, modified -- the deviationist fork            │
+  │  cratedig -- a modified version of slskd             │
   └──────────────────────────────────────────────────────┘
 ┍━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ━━━━ ━  ━┉   ┉     ┉
 │ This is a modified version of slskd.  It is not maintained by,
@@ -1878,7 +1878,7 @@ services.AddSingleton<slskd.Player.AnalysisProvider>();
 │ of the AGPLv3.  See the LICENSE file in the root directory of this
 │ project for the complete terms and conditions.
 │
-│ Source of this version: https://github.com/deviationist/slskd
+│ Source of this version: https://github.com/deviationist/cratedig
 │ Based on slskd:         https://github.com/slskd/slskd
 │
 ├╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌ ╌ ╌╌╌╌ ╌
