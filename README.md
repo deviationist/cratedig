@@ -1,5 +1,9 @@
 # slskd
 
+> **This is a modified version of slskd.  It is not maintained by, endorsed by, or affiliated with the slskd project or its author(s).**
+>
+> The original project is [slskd/slskd](https://github.com/slskd/slskd). What this fork changes is listed in [FORK.md](FORK.md).
+
 [![Build](https://img.shields.io/github/actions/workflow/status/slskd/slskd/ci.yml?branch=master&logo=github)](https://github.com/slskd/slskd/actions/workflows/ci.yml)
 [![Docker Pulls](https://img.shields.io/docker/pulls/slskd/slskd?logo=docker)](https://hub.docker.com/r/slskd/slskd)
 [![GitHub all releases](https://img.shields.io/github/downloads/slskd/slskd/total?logo=github&color=brightgreen)](https://github.com/slskd/slskd/releases)
