@@ -58,6 +58,11 @@
     <Rule Id="SA1614" Action="Info" />
     <Rule Id="SA1616" Action="Info" />
     <Rule Id="SA1623" Action="Info" />
+    <!-- this fork: headers name a second copyright holder and what was modified, as the licence's
+         Additional Terms (3c/3d) require, so they cannot match the one fixed template in stylecop.json;
+         SA1633 (a header must be present) still applies -->
+    <Rule Id="SA1636" Action="None" />
+    <Rule Id="SA1641" Action="None" />
     <Rule Id="SA1649" Action="None" />
   </Rules>
 </RuleSet>
