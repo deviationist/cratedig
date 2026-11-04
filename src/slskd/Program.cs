@@ -177,12 +177,15 @@ namespace slskd
         public static string FullVersion { get; } = $"{SemanticVersion} ({InformationalVersion})";
 
         /// <summary>
-        ///     Gets the minor version to identify slskd on the network.
+        ///     Gets the minor version to identify this client on the network.
         /// </summary>
         /// <remarks>
-        ///     NOTICE: If you have forked slskd, change this number to something else.
+        ///     This is a modified version of slskd, so it does not send slskd's 760: the server uses the
+        ///     identifier to tell client implementations apart, and what this fork does (scheduled
+        ///     searches among it) must not be counted as slskd's. 3712 was checked against the known
+        ///     Soulseek.NET clients (slskd 760, the library's examples 9999) on 2026-11-04.
         /// </remarks>
-        public static int NetworkMinorVersion { get; } = 760;
+        public static int NetworkMinorVersion { get; } = 3712;
 
         /// <summary>
         ///     Gets a value indicating whether the current version is a Canary build.
