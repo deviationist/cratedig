@@ -86,14 +86,16 @@ ENV SHELL=/usr/bin/bash \
   SLSKD_DOCKER_REVISION=$REVISION \
   SLSKD_DOCKER_BUILD_DATE=$BUILD_DATE
 
-LABEL org.opencontainers.image.title=slskd \
-  org.opencontainers.image.description="A modern client-server application for the Soulseek file sharing network" \
-  org.opencontainers.image.authors="JP Dillingham" \
-  org.opencontainers.image.vendor="slskd Project" \
+# a modified version of slskd: the labels name this fork, where its source is, and what it is based on,
+# so an image never presents itself as upstream's (LICENSE, Additional Terms 2f and 3)
+LABEL org.opencontainers.image.title="slskd (modified version, deviationist fork)" \
+  org.opencontainers.image.description="A modified version of slskd. It is not maintained by, endorsed by, or affiliated with the slskd project or its author(s)." \
+  org.opencontainers.image.authors="deviationist" \
+  org.opencontainers.image.vendor="deviationist" \
   org.opencontainers.image.licenses=AGPL-3.0-only \
-  org.opencontainers.image.url=https://slskd.org \
-  org.opencontainers.image.source=https://github.com/slskd/slskd \
-  org.opencontainers.image.documentation=https://github.com/slskd/slskd \
+  org.opencontainers.image.url=https://github.com/deviationist/slskd \
+  org.opencontainers.image.source=https://github.com/deviationist/slskd \
+  org.opencontainers.image.documentation=https://github.com/deviationist/slskd/blob/main/FORK.md \
   org.opencontainers.image.version=$VERSION \
   org.opencontainers.image.revision=$REVISION \
   org.opencontainers.image.created=$BUILD_DATE
