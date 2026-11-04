@@ -58,7 +58,7 @@ public static class OfflinePage
     ///     The message shown when none is configured. Generic on purpose: slskd knows nothing of the network it is
     ///     deployed on, so anything more specific is the operator's to say.
     /// </summary>
-    public const string DefaultMessage = "slskd can't be reached right now. Check your connection and try again.";
+    public const string DefaultMessage = "cratedig can't be reached right now. Check your connection and try again.";
 
     private const string Placeholder = "{{message}}";
 

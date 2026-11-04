@@ -97,8 +97,8 @@ public class MailController : ControllerBase
         var mail = new Mail
         {
             To = to,
-            Subject = "slskd test message",
-            Text = $"This is a test message from slskd, sent through the '{options.Adapter}' adapter.\n\n"
+            Subject = "cratedig test message",
+            Text = $"This is a test message from cratedig, sent through the '{options.Adapter}' adapter.\n\n"
                 + "If you are reading it, mail is configured correctly.\n",
         };
 
