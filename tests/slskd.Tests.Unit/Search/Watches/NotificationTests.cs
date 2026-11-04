@@ -56,8 +56,8 @@ public class NotificationTests
     [Fact]
     public void The_Subject_Counts_The_Files_And_Says_Result_Once_For_One()
     {
-        Assert.Equal("slskd: 1 new result for 'aphex'", Notification.SubjectFor("aphex", 1));
-        Assert.Equal("slskd: 4 new results for 'aphex'", Notification.SubjectFor("aphex", 4));
+        Assert.Equal("cratedig: 1 new result for 'aphex'", Notification.SubjectFor("aphex", 1));
+        Assert.Equal("cratedig: 4 new results for 'aphex'", Notification.SubjectFor("aphex", 4));
     }
 
     [Fact]
@@ -242,7 +242,7 @@ public class NotificationTests
         Assert.Contains("A search this broad", composed.Html);
 
         // the count in the subject is what the run found, not what it listed
-        Assert.Equal("slskd: 10 new results for 'aphex'", composed.Subject);
+        Assert.Equal("cratedig: 10 new results for 'aphex'", composed.Subject);
     }
 
     [Fact]

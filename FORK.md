@@ -1,10 +1,31 @@
 # This fork
 
-`deviationist/slskd`, a fork of [`slskd/slskd`](https://github.com/slskd/slskd)
+**cratedig** (`deviationist/cratedig`), a fork of [`slskd/slskd`](https://github.com/slskd/slskd)
 with additions for running slskd as the front of a music collection: a table
 view, search watches, a built-in player, share links, notifications, a phone
 layout and a long list of fixes. Fixes and features that could stand on their
 own upstream are kept on branches that can be sent there as they are.
+
+## Name and identity
+
+slskd's licence carries Additional Terms that bind every modified version, and
+this fork follows them:
+
+- **Its own name**, cratedig, wherever a user sees one: the page title, the
+  installed app, the startup banner, notifications and mail. Internal names stay
+  slskd's, as the terms allow -- namespaces, configuration keys, `SLSKD_*`
+  variables, `slskd.yml`, data paths -- so an existing setup carries over.
+- **Says it is modified**, in the README, the startup banner and the version
+  modal, in the terms' own words.
+- **Its own network identifier**: it logs in to Soulseek with minor version
+  `3712`, not slskd's `760`, so the server never counts this fork's behaviour as
+  slskd's.
+- **File headers** name this fork's copyright and what it modified, below
+  upstream's notices, which are kept as they are.
+- **Image labels** name this fork and point at this repository.
+
+`LICENSE` is upstream's, unmodified, and ships beside the executable in the
+image. `FORKING.md` is upstream's guide to these terms.
 
 ## Branches
 
