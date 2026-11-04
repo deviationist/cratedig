@@ -1462,6 +1462,12 @@ time {
     font-family: monospace;
 }
 
+/* body text, not meta: it is the notice the licence requires, and a dimmed
+   one is the kind that gets read past */
+.footer-modified-notice {
+    margin: 0 0 1em;
+}
+
 .footer-stat-detail {
     margin-left: 5px;
     font-size: 12px;

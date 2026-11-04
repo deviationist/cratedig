@@ -1854,25 +1854,17 @@ services.AddSingleton<slskd.Player.AnalysisProvider>();
 
                 var centeredVersion = new string(' ', paddingLeft) + version + new string(' ', paddingRight);
 
-                var logos = new[]
-                {
-                    $@"
-          ▄▄▄▄         ▄▄▄▄       ▄▄▄▄
-  ▄▄▄▄▄▄▄ █  █ ▄▄▄▄▄▄▄ █  █▄▄▄ ▄▄▄█  █
-  █__ --█ █  █ █__ --█ █    ◄█ █  -  █
-  █▄▄▄▄▄█ █▄▄█ █▄▄▄▄▄█ █▄▄█▄▄█ █▄▄▄▄▄█",
-                    @$"
-        ▄▄▄▄     ▄▄▄▄     ▄▄▄▄
-  ▄▄▄▄▄▄█  █▄▄▄▄▄█  █▄▄▄▄▄█  █
-  █__ --█  █__ --█    ◄█  -  █
-  █▄▄▄▄▄█▄▄█▄▄▄▄▄█▄▄█▄▄█▄▄▄▄▄█",
-                };
-
-                var logo = logos[new System.Random().Next(0, logos.Length)];
-
+                // this is a modified version of slskd, so it does not reproduce slskd's block-letter logo
+                // and says what it is before anything else (LICENSE, Additional Terms 3a). the licence
+                // notices below it are upstream's and stay as they are (2a).
                 var banner = @$"
-{logo}
+  ┌──────────────────────────────────────────────────────┐
+  │  slskd, modified -- the deviationist fork            │
+  └──────────────────────────────────────────────────────┘
 ┍━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ━━━━ ━  ━┉   ┉     ┉
+│ This is a modified version of slskd.  It is not maintained by,
+│ endorsed by, or affiliated with the slskd project or its author(s).
+│
 │ This program is free software: you can redistribute it and/or modify
 │ it under the terms of the GNU Affero General Public License as published
 │ by the Free Software Foundation, version 3.
@@ -1882,8 +1874,8 @@ services.AddSingleton<slskd.Player.AnalysisProvider>();
 │ of the AGPLv3.  See the LICENSE file in the root directory of this
 │ project for the complete terms and conditions.
 │
-│ 🌐 https://slskd.org
-│ 🐱 https://github.com/slskd/slskd
+│ Source of this version: https://github.com/deviationist/slskd
+│ Based on slskd:         https://github.com/slskd/slskd
 │
 ├╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌ ╌ ╌╌╌╌ ╌
 │ {version}";
