@@ -52,7 +52,7 @@ namespace slskd
     using Asp.Versioning.ApiExplorer;
     using Microsoft.AspNetCore.Authentication.JwtBearer;
     using Microsoft.AspNetCore.Builder;
-    using Microsoft.AspNetCore.DataProtection;
+    using Microsoft.AspNetCore.DataProtection.KeyManagement;
     using Microsoft.AspNetCore.Diagnostics;
     using Microsoft.AspNetCore.Hosting;
     using Microsoft.AspNetCore.Http;
@@ -382,7 +382,11 @@ namespace slskd
             // only one long-running instance.
             try
             {
-                Mutex = new Mutex(initiallyOwned: true, Compute.Sha256Hash(AppName), out bool created);
+                Mutex = new Mutex(
+                    initiallyOwned: true,
+                    name: Compute.Sha256Hash(AppName),
+                    options: new NamedWaitHandleOptions { CurrentUserOnly = false, CurrentSessionOnly = true },
+                    out bool created);
 
                 if (!created)
                 {
@@ -450,7 +454,17 @@ namespace slskd
 
                 if (OptionsAtStartup.Debug)
                 {
-                    Log.Information($"Configuration:\n{Configuration.GetDebugView()}");
+                    // redact values for any key matching the name of a property marked [Secret]. keys from YAML may be
+                    // snake or kebab case, so normalize before comparing. this over-redacts, which is fine here
+                    var secretNames = typeof(Options).Assembly.GetTypes()
+                        .Where(t => t == typeof(Options) || (t.FullName?.StartsWith($"{typeof(Options).FullName}+") ?? false))
+                        .SelectMany(t => t.GetProperties())
+                        .Where(p => p.GetCustomAttributes(typeof(SecretAttribute), inherit: false).Length > 0)
+                        .Select(p => p.Name.ToLowerInvariant())
+                        .ToHashSet();
+
+                    Log.Information($"Configuration:\n{Configuration.GetDebugView(context =>
+                        secretNames.Contains(context.Key.Replace("_", string.Empty).Replace("-", string.Empty).ToLowerInvariant()) ? "*****" : context.Value)}");
                 }
 
                 if (!OptionsAtStartup.TryValidate(out var result))
@@ -461,7 +475,7 @@ namespace slskd
             }
             catch (Exception ex)
             {
-                Log.Information($"Invalid configuration: {(!OptionsAtStartup.Debug ? ex : ex.Message)}");
+                Log.Information($"Invalid configuration: {(OptionsAtStartup.Debug ? ex : ex.Message)}");
                 return;
             }
 
@@ -835,8 +849,15 @@ namespace slskd
 
             services.ConfigureTelemetry();
 
-            services.AddDataProtection()
-                .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(DataDirectory, "misc", ".DataProtection-Keys")));
+            /*
+                by default, adding authentication of any kind adds data protection, and the default configuration for
+                data protection drops .DataProtection-Keys on the filesystem. we're not using data protection, but this
+                can't be suppressed.
+
+                instead, we must fake the key manager into using a dummy repository to stop it from using the filesystem
+            */
+            services.AddDataProtection();
+            services.Configure<KeyManagementOptions>(options => options.XmlRepository = new DataProtectionKeyRepository());
 
             var jwtSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(OptionsAtStartup.Web.Authentication.Jwt.Key));
 
@@ -1023,7 +1044,7 @@ namespace slskd
                         },
                         License = new OpenApiLicense
                         {
-                            Name = "AGPL-3.0 license",
+                            Name = "AGPL-3.0-only",
                             Url = new Uri("https://github.com/slskd/slskd/blob/master/LICENSE"),
                         },
                     });
@@ -1250,7 +1271,7 @@ namespace slskd
                         e => !OptionsAtStartup.Logger.NoDisk,
                         config => config.File(
                             Path.Combine(LogDirectory, $"{AppName}-.log"),
-                            outputTemplate: (OptionsAtStartup.Debug ? "[{SourceContext}] " : string.Empty) + "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}",
+                            outputTemplate: (OptionsAtStartup.Debug ? "[{SourceContext}] " : string.Empty) + "[{Timestamp:yyyy-MM-ddTHH:mm:ss.fff} {Level:u3}] {Message:lj}{NewLine}{Exception}",
                             rollingInterval: RollingInterval.Day,
                             retainedFileTimeLimit: TimeSpan.FromDays(OptionsAtStartup.Retention.Logs))))
                 .WriteTo.Conditional(
