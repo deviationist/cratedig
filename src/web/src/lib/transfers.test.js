@@ -259,7 +259,7 @@ describe('summariseDeletions', () => {
     // A request that did not land is a bigger fact than a file that would not
     // delete, so it is the one reported when a batch contains both.
     expect(transfers.summariseDeletions([refused, failed]).message).toMatch(
-      /could not be removed/,
+      /could not be removed/u,
     );
   });
 
@@ -868,10 +868,10 @@ describe('planRowRemoval', () => {
   });
 });
 
-describe('confirmsRemoval', () => {
-  const press = (overrides = {}) =>
-    transfers.confirmsRemoval({ key: 'Enter', targetTag: 'DIV', ...overrides });
+const press = (overrides = {}) =>
+  transfers.confirmsRemoval({ key: 'Enter', targetTag: 'DIV', ...overrides });
 
+describe('confirmsRemoval', () => {
   it('confirms on Enter', () => {
     expect(press()).toBe(true);
   });
@@ -908,13 +908,13 @@ describe('confirmsRemoval', () => {
   });
 });
 
-describe('planSelectionRemoval', () => {
-  const download = (localFilename) => ({
-    direction: 'Download',
-    localFilename,
-    state: 'Completed, Succeeded',
-  });
+const completedDownload = (localFilename) => ({
+  direction: 'Download',
+  localFilename,
+  state: 'Completed, Succeeded',
+});
 
+describe('planSelectionRemoval', () => {
   it('asks nothing when nothing would be deleted', () => {
     // the same argument the row makes: a dialog over a harmless action is one
     // that gets dismissed unread, which is how the one that matters gets
@@ -929,7 +929,11 @@ describe('planSelectionRemoval', () => {
 
   it('counts only the rows that would lose a file', () => {
     const plan = transfers.planSelectionRemoval({
-      files: [download('/a.flac'), download(null), download('/b.flac')],
+      files: [
+        completedDownload('/a.flac'),
+        completedDownload(null),
+        completedDownload('/b.flac'),
+      ],
     });
 
     expect(plan.deleting).toBe(2);
@@ -938,7 +942,7 @@ describe('planSelectionRemoval', () => {
 
   it('names the paths the server will delete', () => {
     const plan = transfers.planSelectionRemoval({
-      files: [download('/a.flac')],
+      files: [completedDownload('/a.flac')],
     });
 
     expect(plan.filenames).toEqual(['/a.flac']);
@@ -947,7 +951,7 @@ describe('planSelectionRemoval', () => {
 
   it('counts in the plural where there are several', () => {
     const plan = transfers.planSelectionRemoval({
-      files: [download('/a.flac'), download('/b.flac')],
+      files: [completedDownload('/a.flac'), completedDownload('/b.flac')],
     });
 
     expect(plan.header).toBe('Delete 2 files?');
@@ -958,7 +962,7 @@ describe('planSelectionRemoval', () => {
     // a confirmation nobody reads to the end is one nobody read; the count
     // carries the weight
     const files = Array.from({ length: 25 }, (_, index) =>
-      download(`/${index}.flac`),
+      completedDownload(`/${index}.flac`),
     );
     const plan = transfers.planSelectionRemoval({ files });
 
@@ -970,7 +974,7 @@ describe('planSelectionRemoval', () => {
   it('asks nothing when the server does not delete on removal', () => {
     const plan = transfers.planSelectionRemoval({
       deleteFileOnRemoval: false,
-      files: [download('/a.flac')],
+      files: [completedDownload('/a.flac')],
     });
 
     expect(plan.confirm).toBe(false);
