@@ -893,7 +893,7 @@ namespace slskd.Transfers.API
         /// <response code="403">Retrieval is disabled, or the recorded file is not in an application-controlled directory.</response>
         /// <response code="404">The specified download was not found, did not succeed, or produced no file that still exists.</response>
         [HttpGet("downloads/{username}/{id}/file")]
-        [Authorize(Policy = AuthPolicy.Any)]
+        [Authorize(Policy = AuthPolicy.Any, Roles = AuthRole.ReadWriteOrAdministrator)]
         [ProducesResponseType(typeof(FileResult), 200)]
         [ProducesResponseType(400)]
         [ProducesResponseType(403)]
@@ -990,7 +990,7 @@ namespace slskd.Transfers.API
         /// <response code="400">No ids were specified, or one of them is not a valid id.</response>
         /// <response code="403">Retrieval is disabled.</response>
         [HttpPost("downloads/{username}/archive/availability")]
-        [Authorize(Policy = AuthPolicy.Any)]
+        [Authorize(Policy = AuthPolicy.Any, Roles = AuthRole.ReadWriteOrAdministrator)]
         [ProducesResponseType(typeof(ArchiveAvailabilityResponse), 200)]
         [ProducesResponseType(400)]
         [ProducesResponseType(403)]
@@ -1052,7 +1052,7 @@ namespace slskd.Transfers.API
         /// <response code="400">No ids were specified, or one of them is not a valid id.</response>
         /// <response code="403">Retrieval is disabled.</response>
         [HttpPost("downloads/{username}/archive/ticket")]
-        [Authorize(Policy = AuthPolicy.Any)]
+        [Authorize(Policy = AuthPolicy.Any, Roles = AuthRole.ReadWriteOrAdministrator)]
         [ProducesResponseType(typeof(DownloadTicketResponse), 200)]
         [ProducesResponseType(400)]
         [ProducesResponseType(403)]

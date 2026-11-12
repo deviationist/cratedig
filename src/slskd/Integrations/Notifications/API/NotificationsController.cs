@@ -82,7 +82,7 @@ public class NotificationsController : ControllerBase
     /// <returns>What became of it on each channel.</returns>
     /// <response code="200">The request completed; see each channel's result.</response>
     [HttpPost("test")]
-    [Authorize(Policy = AuthPolicy.Any)]
+    [Authorize(Policy = AuthPolicy.Any, Roles = AuthRole.AdministratorOnly)]
     [Consumes("application/json")]
     [ProducesResponseType(typeof(List<NotificationResult>), 200)]
     public async Task<IActionResult> TestAsync([FromBody] NotificationTestRequest request)

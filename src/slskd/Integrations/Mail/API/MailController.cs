@@ -80,7 +80,7 @@ public class MailController : ControllerBase
     /// <response code="401">Authentication failed.</response>
     /// <response code="502">The configured adapter refused the message.</response>
     [HttpPost("test")]
-    [Authorize(Policy = AuthPolicy.Any)]
+    [Authorize(Policy = AuthPolicy.Any, Roles = AuthRole.AdministratorOnly)]
     [ProducesResponseType(200)]
     [ProducesResponseType(400)]
     [ProducesResponseType(401)]

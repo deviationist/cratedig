@@ -166,7 +166,7 @@ namespace slskd.Messaging.API
         /// <response code="204">The request completed successfully.</response>
         /// <response code="404">The room has not been joined.</response>
         [HttpPut("joined/{roomName}/read")]
-        [Authorize(Policy = AuthPolicy.Any)]
+        [Authorize(Policy = AuthPolicy.Any, Roles = AuthRole.ReadWriteOrAdministrator)]
         [ProducesResponseType(204)]
         [ProducesResponseType(404)]
         public IActionResult MarkRead([FromRoute, UrlEncoded] string roomName)
@@ -197,7 +197,7 @@ namespace slskd.Messaging.API
         /// <response code="201">The message was taken in.</response>
         /// <response code="404">Room simulation is not enabled.</response>
         [HttpPost("simulated")]
-        [Authorize(Policy = AuthPolicy.Any)]
+        [Authorize(Policy = AuthPolicy.Any, Roles = AuthRole.AdministratorOnly)]
         [ProducesResponseType(typeof(RoomMessageResponse), 201)]
         [ProducesResponseType(404)]
         public IActionResult Simulate([FromBody] SimulatedRoomMessageRequest request)
