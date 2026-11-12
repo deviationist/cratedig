@@ -38,6 +38,41 @@ using System.Collections.Generic;
 using System.Linq;
 
 /// <summary>
+///     A span of the track, in seconds.
+/// </summary>
+/// <param name="Start">Where it starts.</param>
+/// <param name="End">Where it ends.</param>
+public record struct Span(double Start, double End);
+
+/// <summary>
+///     Python's rounding, which the wording this was ported from was written against: halves to even.
+/// </summary>
+public static class Py
+{
+    public static double Round(double value, int digits) => Math.Round(value, digits, MidpointRounding.ToEven);
+
+    public static string Fixed(double value, int digits)
+        => Round(value, digits).ToString("F" + digits, System.Globalization.CultureInfo.InvariantCulture);
+
+    public static string Percent(double share) => Fixed(share * 100, 0) + "%";
+
+    public static string General(double value) => value.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);
+
+    public static long RoundToLong(double value) => (long)Math.Round(value, MidpointRounding.ToEven);
+
+    public static string Clock(double? seconds)
+    {
+        if (seconds is not { } s)
+        {
+            return null;
+        }
+
+        var whole = (long)s;
+        return $"{whole / 60}:{whole % 60:00}";
+    }
+}
+
+/// <summary>
 ///     What a file's container says about it, read without decoding.
 /// </summary>
 /// <param name="Codec">The codec, as ffprobe names it.</param>
@@ -48,13 +83,6 @@ using System.Linq;
 /// <param name="BitRate">The audio's bitrate, in bits a second, if known.</param>
 /// <param name="Duration">The length the container claims, in seconds.</param>
 public record ContainerFacts(string Codec, string Container, int SampleRate, int Channels, int? DeclaredBits, long? BitRate, double? Duration);
-
-/// <summary>
-///     A span of the track, in seconds.
-/// </summary>
-/// <param name="Start">Where it starts.</param>
-/// <param name="End">Where it ends.</param>
-public record struct Span(double Start, double End);
 
 /// <summary>
 ///     Everything measured of one file, before any of it is put into words.
@@ -135,10 +163,6 @@ public sealed class Measurer
     /// <summary>How far the spectrum must fall across the gap for the band to count as empty.</summary>
     public const double UltrasonicEmptyDb = 40.0;
 
-    /// <summary>The share of segments a wall must cover to be a finding about part of the track, and below which a
-    /// wall throughout is reported in words instead.</summary>
-    public static readonly (double Low, double High) PartialWallRange = (0.20, 0.95);
-
     /// <summary>Lane resolution: the waveform's own grid, so a mark sits under what it is about.</summary>
     public const int LaneBuckets = 1600;
 
@@ -157,11 +181,15 @@ public sealed class Measurer
     /// <summary>Silence this close to either end is how tracks are cut.</summary>
     public const double DropoutEdgeSeconds = 1.0;
 
-    /// <summary>Where the music is: from the first frame this loud to the last, -50 dBFS.</summary>
-    public static readonly double MusicFloor = Math.Pow(10, -50 / 20.0);
-
     /// <summary>A sample this close to full scale is pinned.</summary>
     public const double ClipThreshold = 32700;
+
+    /// <summary>The share of segments a wall must cover to be a finding about part of the track, and below which a
+    /// wall throughout is reported in words instead.</summary>
+    public static readonly (double Low, double High) PartialWallRange = (0.20, 0.95);
+
+    /// <summary>Where the music is: from the first frame this loud to the last, -50 dBFS.</summary>
+    public static readonly double MusicFloor = Math.Pow(10, -50 / 20.0);
 
     /// <summary>Containers that promise the audio never went through a lossy encoder.</summary>
     public static readonly IReadOnlySet<string> LosslessCodecs = new HashSet<string>(StringComparer.Ordinal)
@@ -221,6 +249,47 @@ public sealed class Measurer
     private long LastLoud { get; set; } = -1;
 
     private long BitsSeen { get; set; }
+
+    /// <summary>
+    ///     The highest frequency carrying content, and how far the spectrum falls across it.
+    /// </summary>
+    /// <param name="db">A spectrum normalised to its peak, or null.</param>
+    /// <param name="freq">Each bin's frequency.</param>
+    /// <returns>The cutoff and the cliff, either null where it cannot be read.</returns>
+    public static (double? Cutoff, double? Cliff) Cutoff(double[] db, double[] freq)
+    {
+        if (db is null)
+        {
+            return (null, null);
+        }
+
+        var top = freq[^1];
+
+        // the floor, from the top 5 % of the spectrum: every lossy cutoff sits below it, and for a CD it is the
+        // anti-alias stopband -- the file's own silence either way
+        var floor = Median(db.Where((_, i) => freq[i] >= top * 0.95));
+        var last = -1;
+
+        for (var i = 0; i < db.Length; i++)
+        {
+            if (db[i] > floor + FloorMarginDb)
+            {
+                last = i;
+            }
+        }
+
+        // nothing above the very top: the content runs all the way there, full bandwidth and no cliff
+        if (last < 0)
+        {
+            return (top, null);
+        }
+
+        var cutoff = freq[last];
+        var below = Mean(db, freq, f => f >= cutoff - 2000 && f < cutoff - 500);
+        var above = Mean(db, freq, f => f > cutoff + 500 && f <= cutoff + 2000);
+
+        return below is null || above is null ? (cutoff, null) : (cutoff, below - above);
+    }
 
     /// <summary>
     ///     Adds one frame: a sample per channel, in -1..1 (float decodes may go past it), and the integers they were
@@ -402,45 +471,79 @@ public sealed class Measurer
         };
     }
 
-    /// <summary>
-    ///     The highest frequency carrying content, and how far the spectrum falls across it.
-    /// </summary>
-    /// <param name="db">A spectrum normalised to its peak, or null.</param>
-    /// <param name="freq">Each bin's frequency.</param>
-    /// <returns>The cutoff and the cliff, either null where it cannot be read.</returns>
-    public static (double? Cutoff, double? Cliff) Cutoff(double[] db, double[] freq)
+    // scaled against the busiest bucket, and anything at all draws at least faintly: a share of each bucket's width
+    // rounds a handful of clipped samples to nothing, and the lane came out blank on a file the row called bad
+    private static int[] Scaled(double[] counts)
     {
-        if (db is null)
+        var top = counts.Max();
+
+        if (top <= 0)
         {
-            return (null, null);
+            return new int[counts.Length];
         }
 
-        var top = freq[^1];
+        return counts.Select(c => c > 0 ? (int)Math.Round(Math.Max(1.0, c / top * 100.0), MidpointRounding.ToEven) : 0).ToArray();
+    }
 
-        // the floor, from the top 5 % of the spectrum: every lossy cutoff sits below it, and for a CD it is the
-        // anti-alias stopband -- the file's own silence either way
-        var floor = Median(db.Where((_, i) => freq[i] >= top * 0.95));
-        var last = -1;
+    private static int[] Spread(IEnumerable<Span> spans, double seconds)
+    {
+        var lane = new int[LaneBuckets];
 
-        for (var i = 0; i < db.Length; i++)
+        if (seconds <= 0)
         {
-            if (db[i] > floor + FloorMarginDb)
+            return lane;
+        }
+
+        foreach (var span in spans)
+        {
+            var lo = Math.Max(0, Math.Min(LaneBuckets - 1, (int)(span.Start / seconds * LaneBuckets)));
+            var hi = Math.Max(lo + 1, Math.Min(LaneBuckets, (int)Math.Round(span.End / seconds * LaneBuckets, MidpointRounding.ToEven)));
+
+            for (var i = lo; i < hi; i++)
             {
-                last = i;
+                lane[i] = 100;
             }
         }
 
-        // nothing above the very top: the content runs all the way there, full bandwidth and no cliff
-        if (last < 0)
+        return lane;
+    }
+
+    private static double ToDb(double value) => Py.Round(20.0 * Math.Log10(Math.Max(value, 1e-9)), 2);
+
+    private static double[] Normalised(double[] db)
+    {
+        var max = db.Max();
+        return db.Select(d => d - max).ToArray();
+    }
+
+    private static double? Mean(double[] db, double[] freq, Func<double, bool> within)
+    {
+        double sum = 0;
+        var count = 0;
+
+        for (var i = 0; i < db.Length; i++)
         {
-            return (top, null);
+            if (within(freq[i]))
+            {
+                sum += db[i];
+                count++;
+            }
         }
 
-        var cutoff = freq[last];
-        var below = Mean(db, freq, f => f >= cutoff - 2000 && f < cutoff - 500);
-        var above = Mean(db, freq, f => f > cutoff + 500 && f <= cutoff + 2000);
+        return count > 0 ? sum / count : null;
+    }
 
-        return below is null || above is null ? (cutoff, null) : (cutoff, below - above);
+    private static double Median(IEnumerable<double> values)
+    {
+        var sorted = values.OrderBy(v => v).ToArray();
+
+        if (sorted.Length == 0)
+        {
+            return double.NaN;
+        }
+
+        var mid = sorted.Length / 2;
+        return sorted.Length % 2 == 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2.0;
     }
 
     private void KeepQuiet(long start, long end)
@@ -624,108 +727,5 @@ public sealed class Measurer
         }
 
         return counts;
-    }
-
-    // scaled against the busiest bucket, and anything at all draws at least faintly: a share of each bucket's width
-    // rounds a handful of clipped samples to nothing, and the lane came out blank on a file the row called bad
-    private static int[] Scaled(double[] counts)
-    {
-        var top = counts.Max();
-
-        if (top <= 0)
-        {
-            return new int[counts.Length];
-        }
-
-        return counts.Select(c => c > 0 ? (int)Math.Round(Math.Max(1.0, c / top * 100.0), MidpointRounding.ToEven) : 0).ToArray();
-    }
-
-    private static int[] Spread(IEnumerable<Span> spans, double seconds)
-    {
-        var lane = new int[LaneBuckets];
-
-        if (seconds <= 0)
-        {
-            return lane;
-        }
-
-        foreach (var span in spans)
-        {
-            var lo = Math.Max(0, Math.Min(LaneBuckets - 1, (int)(span.Start / seconds * LaneBuckets)));
-            var hi = Math.Max(lo + 1, Math.Min(LaneBuckets, (int)Math.Round(span.End / seconds * LaneBuckets, MidpointRounding.ToEven)));
-
-            for (var i = lo; i < hi; i++)
-            {
-                lane[i] = 100;
-            }
-        }
-
-        return lane;
-    }
-
-    private static double ToDb(double value) => Py.Round(20.0 * Math.Log10(Math.Max(value, 1e-9)), 2);
-
-    private static double[] Normalised(double[] db)
-    {
-        var max = db.Max();
-        return db.Select(d => d - max).ToArray();
-    }
-
-    private static double? Mean(double[] db, double[] freq, Func<double, bool> within)
-    {
-        double sum = 0;
-        var count = 0;
-
-        for (var i = 0; i < db.Length; i++)
-        {
-            if (within(freq[i]))
-            {
-                sum += db[i];
-                count++;
-            }
-        }
-
-        return count > 0 ? sum / count : null;
-    }
-
-    private static double Median(IEnumerable<double> values)
-    {
-        var sorted = values.OrderBy(v => v).ToArray();
-
-        if (sorted.Length == 0)
-        {
-            return double.NaN;
-        }
-
-        var mid = sorted.Length / 2;
-        return sorted.Length % 2 == 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2.0;
-    }
-}
-
-/// <summary>
-///     Python's rounding, which the wording this was ported from was written against: halves to even.
-/// </summary>
-public static class Py
-{
-    public static double Round(double value, int digits) => Math.Round(value, digits, MidpointRounding.ToEven);
-
-    public static string Fixed(double value, int digits)
-        => Round(value, digits).ToString("F" + digits, System.Globalization.CultureInfo.InvariantCulture);
-
-    public static string Percent(double share) => Fixed(share * 100, 0) + "%";
-
-    public static string General(double value) => value.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);
-
-    public static long RoundToLong(double value) => (long)Math.Round(value, MidpointRounding.ToEven);
-
-    public static string Clock(double? seconds)
-    {
-        if (seconds is not { } s)
-        {
-            return null;
-        }
-
-        var whole = (long)s;
-        return $"{whole / 60}:{whole % 60:00}";
     }
 }

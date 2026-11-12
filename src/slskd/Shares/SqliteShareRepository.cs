@@ -160,8 +160,8 @@ namespace slskd.Shares
                 }
                 else
                 {
-                    cmd = new SqliteCommand("SELECT COUNT(*) FROM directories WHERE name LIKE @prefix || '%'", conn);
-                    cmd.Parameters.AddWithValue("prefix", parentDirectory);
+                    cmd = new SqliteCommand("SELECT COUNT(*) FROM directories WHERE name LIKE @prefix || '%' ESCAPE '^'", conn);
+                    cmd.Parameters.AddWithValue("prefix", parentDirectory.Replace("^", "^^").Replace("%", "^%").Replace("_", "^_"));
                 }
 
                 var reader = cmd.ExecuteReader();
@@ -193,8 +193,8 @@ namespace slskd.Shares
                 }
                 else
                 {
-                    cmd = new SqliteCommand("SELECT COUNT(*) FROM files WHERE maskedFilename LIKE @prefix || '%'", conn);
-                    cmd.Parameters.AddWithValue("prefix", parentDirectory);
+                    cmd = new SqliteCommand("SELECT COUNT(*) FROM files WHERE maskedFilename LIKE @prefix || '%' ESCAPE '^'", conn);
+                    cmd.Parameters.AddWithValue("prefix", parentDirectory.Replace("^", "^^").Replace("%", "^%").Replace("_", "^_"));
                 }
 
                 var reader = cmd.ExecuteReader();
@@ -417,8 +417,8 @@ namespace slskd.Shares
                 }
                 else
                 {
-                    cmd = new SqliteCommand("SELECT name from directories WHERE name LIKE @prefix || '%' ORDER BY name ASC;", conn);
-                    cmd.Parameters.AddWithValue("prefix", parentDirectory);
+                    cmd = new SqliteCommand("SELECT name from directories WHERE name LIKE @prefix || '%' ESCAPE '^' ORDER BY name ASC;", conn);
+                    cmd.Parameters.AddWithValue("prefix", parentDirectory.Replace("^", "^^").Replace("%", "^%").Replace("_", "^_"));
                 }
 
                 var reader = cmd.ExecuteReader();
@@ -457,8 +457,8 @@ namespace slskd.Shares
                 }
                 else
                 {
-                    cmd = new SqliteCommand("SELECT maskedFilename, code, size, extension, attributeJson FROM files WHERE maskedFilename LIKE @match ORDER BY maskedFilename ASC;", conn);
-                    cmd.Parameters.AddWithValue("match", parentDirectory + '%');
+                    cmd = new SqliteCommand("SELECT maskedFilename, code, size, extension, attributeJson FROM files WHERE maskedFilename LIKE @match ESCAPE '^' ORDER BY maskedFilename ASC;", conn);
+                    cmd.Parameters.AddWithValue("match", parentDirectory.Replace("^", "^^").Replace("%", "^%").Replace("_", "^_") + '%');
                 }
 
                 var reader = cmd.ExecuteReader();
@@ -594,7 +594,7 @@ namespace slskd.Shares
 
             var sql = $"SELECT files.maskedFilename, files.code, files.size, files.extension, files.attributeJson FROM filenames " +
                 "INNER JOIN files ON filenames.maskedFilename = files.maskedFilename " +
-                $"WHERE filenames MATCH '({match}) {(query.Exclusions.Any() ? $"NOT ({exclusions})" : string.Empty)}' " +
+                "WHERE filenames MATCH @match " +
                 $"ORDER BY filenames.maskedFilename ASC {(limit.HasValue ? $"LIMIT {limit.Value}" : string.Empty)};";
 
             var results = new List<Soulseek.File>();
@@ -603,6 +603,7 @@ namespace slskd.Shares
             {
                 using var conn = GetConnection();
                 using var cmd = new SqliteCommand(sql, conn);
+                cmd.Parameters.AddWithValue("match", $"({match}) {(query.Exclusions.Any() ? $"NOT ({exclusions})" : string.Empty)}");
                 using var reader = cmd.ExecuteReader();
 
                 while (reader.Read())
@@ -756,6 +757,7 @@ namespace slskd.Shares
             {
                 if (disposing)
                 {
+                    KeepaliveTimer.Dispose();
                     KeepaliveConnection.Dispose();
                 }
 

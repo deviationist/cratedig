@@ -85,12 +85,6 @@ public static class SameTrack
     public const int Window = 1024;
     public const double Fps = Rate / (double)Hop;
 
-    /// <summary>Band edges in Hz; the last band runs to Nyquist. Coarse on purpose: an encoder's work lives in the
-    /// fine detail and the treble, and neither is what makes a track the track.</summary>
-    public static readonly double[] Edges = [60, 150, 300, 600, 1200, 2400, 4000, 5500];
-
-    public static int BandCount => Edges.Length;
-
     /// <summary>Frames this far below the loudest are silence, for trimming the ends.</summary>
     public const double SilenceDb = 50.0;
 
@@ -114,151 +108,11 @@ public static class SameTrack
     /// <summary>A drift smaller than this is a frame or two of noise, not a speed.</summary>
     public const int DriftReportMs = 50;
 
-    /// <summary>
-    ///     Builds features from mono samples at <see cref="Rate"/>, as they are decoded.
-    /// </summary>
-    public sealed class Builder
-    {
-        private static readonly double[] Hann = Enumerable.Range(0, Window).Select(n => 0.5 - (0.5 * Math.Cos(2 * Math.PI * n / (Window - 1)))).ToArray();
+    /// <summary>Band edges in Hz; the last band runs to Nyquist. Coarse on purpose: an encoder's work lives in the
+    /// fine detail and the treble, and neither is what makes a track the track.</summary>
+    public static readonly double[] Edges = [60, 150, 300, 600, 1200, 2400, 4000, 5500];
 
-        // which band each bin of the rfft falls in, or -1 below the first edge
-        private static readonly int[] BandOf = Enumerable.Range(0, (Window / 2) + 1).Select(k =>
-        {
-            var freq = k * (double)Rate / Window;
-
-            for (var b = Edges.Length - 1; b >= 0; b--)
-            {
-                if (freq >= Edges[b])
-                {
-                    return b;
-                }
-            }
-
-            return -1;
-        }).ToArray();
-
-        private readonly float[] ring = new float[Window];
-        private readonly Complex[] work = new Complex[Window];
-        private readonly List<double[]> bands = [];
-        private readonly List<double> totals = [];
-        private long received;
-
-        /// <summary>
-        ///     Adds one sample.
-        /// </summary>
-        /// <param name="sample">The sample.</param>
-        public void Add(float sample)
-        {
-            ring[received % Window] = sample;
-            received++;
-
-            // frame k covers samples k*Hop .. k*Hop+Window-1, and is ready once the last of them is in
-            var end = received - Window;
-
-            if (end >= 0 && end % Hop == 0)
-            {
-                Frame(end);
-            }
-        }
-
-        /// <summary>
-        ///     The features, once every sample is in.
-        /// </summary>
-        /// <returns>The features.</returns>
-        /// <exception cref="InvalidOperationException">Thrown when the file is too short to compare.</exception>
-        public Features Finish()
-        {
-            var n = totals.Count;
-
-            if (n < (int)(SectionSeconds * Fps))
-            {
-                throw new InvalidOperationException("too short to compare");
-            }
-
-            var level = totals.Select(t => 10.0 * Math.Log10(t + 1e-12)).ToArray();
-            var max = level.Max();
-            var lead = Array.FindIndex(level, l => l > max - SilenceDb);
-            var tail = Array.FindLastIndex(level, l => l > max - SilenceDb) + 1;
-
-            // log energy per band, standardised per band over the music: gain and EQ tilt drop out
-            var frames = tail - lead;
-            var e = new double[frames][];
-
-            for (var i = 0; i < frames; i++)
-            {
-                e[i] = bands[lead + i].Select(v => Math.Log10(v + 1e-12)).ToArray();
-            }
-
-            var standardised = new float[frames][];
-
-            for (var i = 0; i < frames; i++)
-            {
-                standardised[i] = new float[BandCount];
-            }
-
-            for (var b = 0; b < BandCount; b++)
-            {
-                var mean = 0.0;
-
-                for (var i = 0; i < frames; i++)
-                {
-                    mean += e[i][b];
-                }
-
-                mean /= frames;
-                var variance = 0.0;
-
-                for (var i = 0; i < frames; i++)
-                {
-                    variance += (e[i][b] - mean) * (e[i][b] - mean);
-                }
-
-                var std = Math.Sqrt(variance / frames) + 1e-9;
-
-                for (var i = 0; i < frames; i++)
-                {
-                    standardised[i][b] = (float)((e[i][b] - mean) / std);
-                }
-            }
-
-            var power = 10.0 * Math.Log10(totals.Skip(lead).Take(frames).Average() + 1e-12);
-
-            return new Features(
-                standardised,
-                LeadSeconds: Py.Round(lead / Fps, 2),
-                TailSeconds: Py.Round((n - tail) / Fps, 2),
-                MusicSeconds: Py.Round(frames / Fps, 2),
-                PowerDb: Py.Round(power, 2));
-        }
-
-        private void Frame(long start)
-        {
-            for (var i = 0; i < Window; i++)
-            {
-                work[i] = new Complex(ring[(start + i) % Window] * Hann[i], 0);
-            }
-
-            Fft.Transform(work);
-
-            var perBand = new double[BandCount];
-            double total = 0;
-
-            for (var k = 0; k <= Window / 2; k++)
-            {
-                var c = work[k];
-                var power = (c.Real * c.Real) + (c.Imaginary * c.Imaginary);
-                total += power;
-
-                if (BandOf[k] >= 0)
-                {
-                    perBand[BandOf[k]] += power;
-                }
-            }
-
-            bands.Add(perBand);
-            totals.Add(total);
-        }
-    }
+    public static int BandCount => Edges.Length;
 
     /// <summary>
     ///     How far two files are the same music.
@@ -474,5 +328,151 @@ public static class SameTrack
         var sorted = values.OrderBy(v => v).ToArray();
         var mid = sorted.Length / 2;
         return sorted.Length % 2 == 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2.0;
+    }
+
+    /// <summary>
+    ///     Builds features from mono samples at <see cref="Rate"/>, as they are decoded.
+    /// </summary>
+    public sealed class Builder
+    {
+        private static readonly double[] Hann = Enumerable.Range(0, Window).Select(n => 0.5 - (0.5 * Math.Cos(2 * Math.PI * n / (Window - 1)))).ToArray();
+
+        // which band each bin of the rfft falls in, or -1 below the first edge
+        private static readonly int[] BandOf = Enumerable.Range(0, (Window / 2) + 1).Select(k =>
+        {
+            var freq = k * (double)Rate / Window;
+
+            for (var b = Edges.Length - 1; b >= 0; b--)
+            {
+                if (freq >= Edges[b])
+                {
+                    return b;
+                }
+            }
+
+            return -1;
+        }).ToArray();
+
+        private readonly float[] ring = new float[Window];
+        private readonly Complex[] work = new Complex[Window];
+        private readonly List<double[]> bands = [];
+        private readonly List<double> totals = [];
+        private long received;
+
+        /// <summary>
+        ///     Adds one sample.
+        /// </summary>
+        /// <param name="sample">The sample.</param>
+        public void Add(float sample)
+        {
+            ring[received % Window] = sample;
+            received++;
+
+            // frame k covers samples k*Hop .. k*Hop+Window-1, and is ready once the last of them is in
+            var end = received - Window;
+
+            if (end >= 0 && end % Hop == 0)
+            {
+                Frame(end);
+            }
+        }
+
+        /// <summary>
+        ///     The features, once every sample is in.
+        /// </summary>
+        /// <returns>The features.</returns>
+        /// <exception cref="InvalidOperationException">Thrown when the file is too short to compare.</exception>
+        public Features Finish()
+        {
+            var n = totals.Count;
+
+            if (n < (int)(SectionSeconds * Fps))
+            {
+                throw new InvalidOperationException("too short to compare");
+            }
+
+            var level = totals.Select(t => 10.0 * Math.Log10(t + 1e-12)).ToArray();
+            var max = level.Max();
+            var lead = Array.FindIndex(level, l => l > max - SilenceDb);
+            var tail = Array.FindLastIndex(level, l => l > max - SilenceDb) + 1;
+
+            // log energy per band, standardised per band over the music: gain and EQ tilt drop out
+            var frames = tail - lead;
+            var e = new double[frames][];
+
+            for (var i = 0; i < frames; i++)
+            {
+                e[i] = bands[lead + i].Select(v => Math.Log10(v + 1e-12)).ToArray();
+            }
+
+            var standardised = new float[frames][];
+
+            for (var i = 0; i < frames; i++)
+            {
+                standardised[i] = new float[BandCount];
+            }
+
+            for (var b = 0; b < BandCount; b++)
+            {
+                var mean = 0.0;
+
+                for (var i = 0; i < frames; i++)
+                {
+                    mean += e[i][b];
+                }
+
+                mean /= frames;
+                var variance = 0.0;
+
+                for (var i = 0; i < frames; i++)
+                {
+                    variance += (e[i][b] - mean) * (e[i][b] - mean);
+                }
+
+                var std = Math.Sqrt(variance / frames) + 1e-9;
+
+                for (var i = 0; i < frames; i++)
+                {
+                    standardised[i][b] = (float)((e[i][b] - mean) / std);
+                }
+            }
+
+            var power = 10.0 * Math.Log10(totals.Skip(lead).Take(frames).Average() + 1e-12);
+
+            return new Features(
+                standardised,
+                LeadSeconds: Py.Round(lead / Fps, 2),
+                TailSeconds: Py.Round((n - tail) / Fps, 2),
+                MusicSeconds: Py.Round(frames / Fps, 2),
+                PowerDb: Py.Round(power, 2));
+        }
+
+        private void Frame(long start)
+        {
+            for (var i = 0; i < Window; i++)
+            {
+                work[i] = new Complex(ring[(start + i) % Window] * Hann[i], 0);
+            }
+
+            Fft.Transform(work);
+
+            var perBand = new double[BandCount];
+            double total = 0;
+
+            for (var k = 0; k <= Window / 2; k++)
+            {
+                var c = work[k];
+                var power = (c.Real * c.Real) + (c.Imaginary * c.Imaginary);
+                total += power;
+
+                if (BandOf[k] >= 0)
+                {
+                    perBand[BandOf[k]] += power;
+                }
+            }
+
+            bands.Add(perBand);
+            totals.Add(total);
+        }
     }
 }

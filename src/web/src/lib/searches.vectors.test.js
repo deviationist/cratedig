@@ -13,8 +13,10 @@ import path from 'node:path';
  */
 const vectors = JSON.parse(
   fs.readFileSync(
-    path.join(__dirname, '../../../../tests/fixtures/search-filter-vectors.json'),
-    'utf8',
+    path.join(
+      __dirname,
+      '../../../../tests/fixtures/search-filter-vectors.json',
+    ),
   ),
 );
 
@@ -36,12 +38,12 @@ const judge = (filter, file) => {
 
 describe('filter vectors, shared with the server', () => {
   for (const testCase of vectors.cases) {
-    for (const [property, expected] of [
-      ['passes', true],
-      ['rejects', false],
+    for (const [property, expected, verb] of [
+      ['passes', true, 'passes'],
+      ['rejects', false, 'is rejected by'],
     ]) {
       for (const key of testCase[property] ?? []) {
-        it(`${testCase.name}: ${key} ${expected ? 'passes' : 'is rejected by'} "${testCase.filter}"`, () => {
+        it(`${testCase.name}: ${key} ${verb} "${testCase.filter}"`, () => {
           expect(judge(testCase.filter, fileNamed(key))).toBe(expected);
         });
       }

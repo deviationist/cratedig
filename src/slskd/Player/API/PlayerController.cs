@@ -117,7 +117,7 @@ public class PlayerController : ControllerBase
     /// <response code="200">The request completed successfully.</response>
     /// <response code="404">The player is off.</response>
     [HttpPost("ticket")]
-    [Authorize(Policy = AuthPolicy.Any)]
+    [Authorize(Policy = AuthPolicy.Any, Roles = AuthRole.ReadWriteOrAdministrator)]
     [ProducesResponseType(typeof(StreamTicketResponse), 200)]
     public IActionResult CreateTicket()
     {
@@ -209,7 +209,7 @@ public class PlayerController : ControllerBase
     /// <response code="200">The request completed successfully.</response>
     /// <response code="502">The decode failed.</response>
     [HttpGet("{id}/peaks")]
-    [Authorize(Policy = AuthPolicy.Any)]
+    [Authorize(Policy = AuthPolicy.Any, Roles = AuthRole.ReadWriteOrAdministrator)]
     [ProducesResponseType(typeof(WaveformPeaks), 200)]
     public async Task<IActionResult> GetPeaksAsync([FromRoute] string id, CancellationToken cancellationToken)
     {
@@ -238,7 +238,7 @@ public class PlayerController : ControllerBase
     /// <returns>The tags; every field null when the file carries none.</returns>
     /// <response code="200">The request completed successfully.</response>
     [HttpGet("{id}/tags")]
-    [Authorize(Policy = AuthPolicy.Any)]
+    [Authorize(Policy = AuthPolicy.Any, Roles = AuthRole.ReadWriteOrAdministrator)]
     [ProducesResponseType(typeof(TrackTags), 200)]
     public IActionResult GetTags([FromRoute] string id)
     {
@@ -301,7 +301,7 @@ public class PlayerController : ControllerBase
     /// <returns>The answer: its state, and the provider's document when it is ready.</returns>
     /// <response code="200">The request completed successfully; see <c>state</c>.</response>
     [HttpGet("{id}/analysis")]
-    [Authorize(Policy = AuthPolicy.Any)]
+    [Authorize(Policy = AuthPolicy.Any, Roles = AuthRole.ReadWriteOrAdministrator)]
     [ProducesResponseType(typeof(AnalysisResponse), 200)]
     public async Task<IActionResult> GetAnalysisAsync([FromRoute] string id, [FromQuery] bool wait = true, CancellationToken cancellationToken = default)
     {
@@ -354,7 +354,7 @@ public class PlayerController : ControllerBase
     /// <returns>How many downloads' analyses were deleted.</returns>
     /// <response code="200">None are saved now.</response>
     [HttpDelete("analyses")]
-    [Authorize(Policy = AuthPolicy.Any)]
+    [Authorize(Policy = AuthPolicy.Any, Roles = AuthRole.ReadWriteOrAdministrator)]
     [ProducesResponseType(typeof(SavedAnalysesResponse), 200)]
     public IActionResult DeleteSavedAnalyses()
         => Ok(new SavedAnalysesResponse { Configured = Analysis.Configured, Downloads = AnalysisStore.Clear() });

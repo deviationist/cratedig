@@ -227,6 +227,30 @@ namespace slskd.Messaging
             }
         }
 
+        /// <inheritdoc/>
+        public void MarkRead(string roomName) => CountUnread(roomName, _ => 0);
+
+        /// <inheritdoc/>
+        public RoomMessage Simulate(string roomName, string username, string message)
+        {
+            // a no-op for a room already there, joined or simulated
+            RoomTracker.TryAdd(roomName, new Room { Name = roomName, IsSimulated = true });
+
+            var simulated = new RoomMessage
+            {
+                Timestamp = DateTime.UtcNow,
+                RoomName = roomName,
+                Username = username,
+                Message = message,
+                Direction = IsSelf(username) ? MessageDirection.Out : MessageDirection.In,
+            };
+
+            Logger.Information("Simulated a message from {Username} in {Room}", username, roomName);
+            Receive(simulated);
+
+            return simulated;
+        }
+
         private async void Client_LoggedIn(object sender, EventArgs e)
         {
             var autoJoinRooms = OptionsMonitor.CurrentValue.Rooms;
@@ -274,30 +298,6 @@ namespace slskd.Messaging
             {
                 RoomTracker.TryRemoveUser(args.RoomName, args.Username);
             }
-        }
-
-        /// <inheritdoc/>
-        public void MarkRead(string roomName) => CountUnread(roomName, _ => 0);
-
-        /// <inheritdoc/>
-        public RoomMessage Simulate(string roomName, string username, string message)
-        {
-            // a no-op for a room already there, joined or simulated
-            RoomTracker.TryAdd(roomName, new Room { Name = roomName, IsSimulated = true });
-
-            var simulated = new RoomMessage
-            {
-                Timestamp = DateTime.UtcNow,
-                RoomName = roomName,
-                Username = username,
-                Message = message,
-                Direction = IsSelf(username) ? MessageDirection.Out : MessageDirection.In,
-            };
-
-            Logger.Information("Simulated a message from {Username} in {Room}", username, roomName);
-            Receive(simulated);
-
-            return simulated;
         }
 
         private bool IsSelf(string username) => !string.IsNullOrEmpty(username) && username == Client.Username;

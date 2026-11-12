@@ -6,7 +6,7 @@
 //   ┍━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ━━━━ ━  ━┉   ┉     ┉
 //   │ Copyright (c) JP Dillingham.
 //   │ Copyright (c) 2026 Robert S.
-//   │ Modified: injects only into responses that are HTML, and honours excludedRoutes
+//   │ Modified: injects only into responses that are HTML, replaying any other byte for byte
 //   │
 //   │ This program is free software: you can redistribute it and/or modify
 //   │ it under the terms of the GNU Affero General Public License as published
@@ -57,9 +57,6 @@ namespace slskd
         /// <returns></returns>
         public static IApplicationBuilder UseHTMLInjection(this IApplicationBuilder builder, string html, IEnumerable<string> excludedRoutes)
         {
-            // excludedRoutes has to be passed. omitted, UseMiddleware resolves the constructor's IEnumerable<string>
-            // from the container instead, which yields an empty collection rather than an error -- so every route the
-            // caller asked to exclude was quietly included, and the parameter did nothing at all.
             return builder.UseMiddleware<HTMLInjectionMiddleware>(html, excludedRoutes);
         }
     }
@@ -93,9 +90,13 @@ namespace slskd
         /// <returns></returns>
         public async Task InvokeAsync(HttpContext context)
         {
+            // accept types can have some metadata after the type, separated by a semicolon. example:
+            //   text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
             context.Request.Headers.TryGetValue("accept", out var accept);
-            var requestedTypes = accept.ToString().Split(',');
-            var injectableTypes = new[] { "text/html", "application/xhtml + xml", "application/xml" };
+
+            // split by comma, then drop the semicolon and everything after it (if present) for that type
+            var requestedTypes = accept.ToString().Split(',').Select(type => type.Split(';')[0].Trim());
+            var injectableTypes = new[] { "text/html", "application/xhtml+xml", "application/xml" };
             var isInjectableType = requestedTypes
                 .Intersect(injectableTypes, StringComparer.InvariantCultureIgnoreCase)
                 .Any();
@@ -105,7 +106,6 @@ namespace slskd
 
             if (!isExcludedRoute && isGET && isInjectableType)
             {
-
                 var originalStream = context.Response.Body;
 
                 // swap the response body out with a memory stream so we can manipulate it later
@@ -113,45 +113,52 @@ namespace slskd
                 var stream = new MemoryStream();
                 context.Response.Body = stream;
 
-                await Next.Invoke(context);
-
-                // check the response content type. what was *asked* for does not decide this; the server may return
-                // something else entirely, and a request for text/html is how a browser asks for any navigation --
-                // including one that downloads a file.
-                var isInjectableResponseType = injectableTypes.Any(injectableType => context.Response.Headers.ContentType.Contains(injectableType));
-
-                if (context.Response.StatusCode == 200 && isInjectableResponseType)
+                try
                 {
-                    // something downstream responded with a 200, meaning there's data in the body
-                    // we need to read it, so we can reset then play it back with the modified HTML
-                    context.Response.Body.Seek(0, SeekOrigin.Begin);
-                    var body = await new StreamReader(context.Response.Body).ReadToEndAsync();
+                    await Next.Invoke(context);
 
-                    var headers = context.Response.Headers
-                        .ToDictionary(kvp => kvp.Key, kvp => kvp.Value)
-                        .Where(kvp => !string.Equals(kvp.Key, "Content-Length", StringComparison.InvariantCultureIgnoreCase));
+                    // the response's own type decides this, not the type that was asked for: a browser asks for
+                    // text/html on any navigation, including one that downloads a file. drop the semicolon and
+                    // everything after it (e.g. '; charset=utf-8') before comparing
+                    var responseType = context.Response.ContentType?.Split(';')[0].Trim();
+                    var isInjectableResponseType = injectableTypes.Contains(responseType, StringComparer.InvariantCultureIgnoreCase);
 
-                    context.Response.Clear();
-
-                    foreach (var header in headers)
+                    if (context.Response.StatusCode == 200 && isInjectableResponseType)
                     {
-                        context.Response.Headers.Add(header);
+                        // something downstream responded with a 200, meaning there's data in the body
+                        // we need to read it, so we can reset then play it back with the modified HTML
+                        context.Response.Body.Seek(0, SeekOrigin.Begin);
+                        var body = await new StreamReader(context.Response.Body).ReadToEndAsync();
+
+                        var headers = context.Response.Headers
+                            .ToDictionary(kvp => kvp.Key, kvp => kvp.Value)
+                            .Where(kvp => !string.Equals(kvp.Key, "Content-Length", StringComparison.InvariantCultureIgnoreCase));
+
+                        context.Response.Clear();
+
+                        foreach (var header in headers)
+                        {
+                            context.Response.Headers.Add(header);
+                        }
+
+                        await context.Response.WriteAsync(body + HTML);
                     }
 
-                    await context.Response.WriteAsync(body + HTML);
+                    // anything else is replayed byte for byte. reading a response into a string and writing it back
+                    // replaces every byte that is not valid UTF-8 with U+FFFD, which corrupts a binary body and
+                    // inflates it by roughly 80% -- silently, with a 200 and a plausible-looking file at the other end.
+
+                    // rewind the stream we injected to the beginning, then replay the data to the
+                    // original stream
+                    stream.Seek(0, SeekOrigin.Begin);
+                    await stream.CopyToAsync(originalStream);
                 }
-
-                // anything else is replayed byte for byte. reading a response into a string and writing it back
-                // replaces every byte that is not valid UTF-8 with U+FFFD, which corrupts a binary body and inflates
-                // it by roughly 80% -- silently, with a 200 and a plausible-looking file at the other end.
-
-                // rewind the stream we injected to the beginning, then replay the data to the
-                // original stream
-                stream.Seek(0, SeekOrigin.Begin);
-                await stream.CopyToAsync(originalStream);
-
-                // swap the original stream back in
-                context.Response.Body = originalStream;
+                finally
+                {
+                    // swap the original stream back in, even if something downstream threw, so that
+                    // upstream middleware (e.g. the exception handler) can write to the response
+                    context.Response.Body = originalStream;
+                }
             }
             else
             {

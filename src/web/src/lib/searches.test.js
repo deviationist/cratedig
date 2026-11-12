@@ -564,31 +564,31 @@ describe('pathOf', () => {
   });
 });
 
-describe('rowActionOf', () => {
-  const downloads = (state, localFileExists) => [
-    {
-      username: 'alice',
-      directories: [
-        {
-          files: [
-            {
-              username: 'alice',
-              filename: 'a\\got-it.flac',
-              size: 100,
-              state,
-              localFileExists,
-              id: 'tid-1',
-            },
-          ],
-        },
-      ],
-    },
-  ];
+const downloadsIn = (state, localFileExists) => [
+  {
+    username: 'alice',
+    directories: [
+      {
+        files: [
+          {
+            username: 'alice',
+            filename: 'a\\got-it.flac',
+            size: 100,
+            state,
+            localFileExists,
+            id: 'tid-1',
+          },
+        ],
+      },
+    ],
+  },
+];
 
+describe('rowActionOf', () => {
   const row = { username: 'alice', filename: 'a\\got-it.flac', size: 100 };
   const action = (state, onDisk, retrievalEnabled = true) =>
     search.rowActionOf({
-      index: search.indexDownloads(downloads(state, onDisk)),
+      index: search.indexDownloads(downloadsIn(state, onDisk)),
       retrievalEnabled,
       row,
     });

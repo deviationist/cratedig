@@ -40,6 +40,11 @@ using System;
 public static class ShareLinkPage
 {
     /// <summary>
+    ///     The path every link page is served under, ahead of its token.
+    /// </summary>
+    public const string PathPrefix = "/l/";
+
+    /// <summary>
     ///     Returns the page with the specified markup added at the end of its head.
     /// </summary>
     /// <remarks>

@@ -38,6 +38,32 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 /// <summary>
+///     How a run ended.
+/// </summary>
+public enum WatchRunOutcome
+{
+    /// <summary>
+    ///     The run is still in progress.
+    /// </summary>
+    Running = 0,
+
+    /// <summary>
+    ///     The run completed.
+    /// </summary>
+    Completed = 1,
+
+    /// <summary>
+    ///     The run failed.
+    /// </summary>
+    Errored = 2,
+
+    /// <summary>
+    ///     The run was not attempted, because the server could not be searched.
+    /// </summary>
+    Skipped = 3,
+}
+
+/// <summary>
 ///     A standing search: one that is re-run on a schedule, and which reports files it has not reported before.
 /// </summary>
 /// <remarks>
@@ -145,6 +171,11 @@ public record Watch
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     /// <summary>
+    ///     Gets or sets the instant this watch was last changed.
+    /// </summary>
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
     ///     Decides whether a watch being saved must seed later rather than now.
     /// </summary>
     /// <remarks>
@@ -158,11 +189,6 @@ public record Watch
     /// <returns>A value indicating whether seeding must wait for the first run.</returns>
     public static bool SeedingMustWait(bool isNew, bool seedRequested, bool searchIsComplete)
         => isNew && seedRequested && !searchIsComplete;
-
-    /// <summary>
-    ///     Gets or sets the instant this watch was last changed.
-    /// </summary>
-    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>
@@ -244,32 +270,6 @@ public record WatchRun
     public WatchRunOutcome Outcome { get; set; }
 
     public string Error { get; set; }
-}
-
-/// <summary>
-///     How a run ended.
-/// </summary>
-public enum WatchRunOutcome
-{
-    /// <summary>
-    ///     The run is still in progress.
-    /// </summary>
-    Running = 0,
-
-    /// <summary>
-    ///     The run completed.
-    /// </summary>
-    Completed = 1,
-
-    /// <summary>
-    ///     The run failed.
-    /// </summary>
-    Errored = 2,
-
-    /// <summary>
-    ///     The run was not attempted, because the server could not be searched.
-    /// </summary>
-    Skipped = 3,
 }
 
 /// <summary>

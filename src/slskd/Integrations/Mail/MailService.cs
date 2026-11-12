@@ -61,15 +61,15 @@ public class MailService
         OptionsMonitor = optionsMonitor;
     }
 
-    private IEnumerable<IMailAdapter> Adapters { get; }
-    private ILogger Log { get; } = Serilog.Log.ForContext<MailService>();
-    private IOptionsMonitor<Options> OptionsMonitor { get; }
-    private Options.IntegrationsOptions.MailOptions MailOptions => OptionsMonitor.CurrentValue.Integrations.Mail;
-
     /// <summary>
     ///     Gets a value indicating whether mail can be sent.
     /// </summary>
     public bool IsEnabled => MailOptions.Enabled;
+
+    private IEnumerable<IMailAdapter> Adapters { get; }
+    private ILogger Log { get; } = Serilog.Log.ForContext<MailService>();
+    private IOptionsMonitor<Options> OptionsMonitor { get; }
+    private Options.IntegrationsOptions.MailOptions MailOptions => OptionsMonitor.CurrentValue.Integrations.Mail;
 
     /// <summary>
     ///     Sends the specified <paramref name="mail"/>.

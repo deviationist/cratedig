@@ -216,7 +216,7 @@ public class ShareLinksController : ControllerBase
     /// <returns>The links.</returns>
     /// <response code="200">The request completed successfully.</response>
     [HttpGet("api/v{version:apiVersion}/links")]
-    [Authorize(Policy = AuthPolicy.Any)]
+    [Authorize(Policy = AuthPolicy.Any, Roles = AuthRole.AdministratorOnly)]
     [Produces("application/json")]
     [ProducesResponseType(typeof(List<ShareLinkResponse>), 200)]
     public async Task<IActionResult> List()
@@ -231,7 +231,7 @@ public class ShareLinksController : ControllerBase
     /// <returns>The addresses, the most recently mailed first.</returns>
     /// <response code="200">The request completed successfully.</response>
     [HttpGet("api/v{version:apiVersion}/links/recipients")]
-    [Authorize(Policy = AuthPolicy.Any)]
+    [Authorize(Policy = AuthPolicy.Any, Roles = AuthRole.AdministratorOnly)]
     [Produces("application/json")]
     [ProducesResponseType(typeof(List<ShareLinkRecipient>), 200)]
     public async Task<IActionResult> ListRecipients()
@@ -247,7 +247,7 @@ public class ShareLinksController : ControllerBase
     /// <response code="204">The address is forgotten.</response>
     /// <response code="404">The address was not remembered.</response>
     [HttpDelete("api/v{version:apiVersion}/links/recipients/{address}")]
-    [Authorize(Policy = AuthPolicy.Any)]
+    [Authorize(Policy = AuthPolicy.Any, Roles = AuthRole.AdministratorOnly)]
     [ProducesResponseType(204)]
     [ProducesResponseType(404)]
     public async Task<IActionResult> ForgetRecipient([FromRoute] string address)
@@ -264,7 +264,7 @@ public class ShareLinksController : ControllerBase
     /// <response code="400">The link cannot be made as asked; the body says why.</response>
     /// <response code="403">Share links are disabled.</response>
     [HttpPost("api/v{version:apiVersion}/links")]
-    [Authorize(Policy = AuthPolicy.Any)]
+    [Authorize(Policy = AuthPolicy.Any, Roles = AuthRole.AdministratorOnly)]
     [Consumes("application/json")]
     [Produces("application/json")]
     [ProducesResponseType(typeof(ShareLinkResponse), 200)]
@@ -318,7 +318,7 @@ public class ShareLinksController : ControllerBase
     /// <response code="400">The number of days is out of range.</response>
     /// <response code="404">There is no such link.</response>
     [HttpPut("api/v{version:apiVersion}/links/{id}")]
-    [Authorize(Policy = AuthPolicy.Any)]
+    [Authorize(Policy = AuthPolicy.Any, Roles = AuthRole.AdministratorOnly)]
     [Consumes("application/json")]
     [Produces("application/json")]
     [ProducesResponseType(typeof(ShareLinkResponse), 200)]
@@ -347,7 +347,7 @@ public class ShareLinksController : ControllerBase
     /// <response code="400">An address is not one.</response>
     /// <response code="404">There is no such link.</response>
     [HttpPost("api/v{version:apiVersion}/links/{id}/mail")]
-    [Authorize(Policy = AuthPolicy.Any)]
+    [Authorize(Policy = AuthPolicy.Any, Roles = AuthRole.AdministratorOnly)]
     [Consumes("application/json")]
     [Produces("application/json")]
     [ProducesResponseType(typeof(ShareLinkResponse), 200)]
@@ -373,7 +373,7 @@ public class ShareLinksController : ControllerBase
     /// <response code="200">The request completed successfully.</response>
     /// <response code="404">There is no such share.</response>
     [HttpPost("api/v{version:apiVersion}/links/{id}/general")]
-    [Authorize(Policy = AuthPolicy.Any)]
+    [Authorize(Policy = AuthPolicy.Any, Roles = AuthRole.AdministratorOnly)]
     [Produces("application/json")]
     [ProducesResponseType(typeof(ShareLinkResponse), 200)]
     [ProducesResponseType(404)]
@@ -392,7 +392,7 @@ public class ShareLinksController : ControllerBase
     /// <response code="200">The request completed successfully.</response>
     /// <response code="404">There is no such link on that share.</response>
     [HttpDelete("api/v{version:apiVersion}/links/{id}/accesses/{accessId}")]
-    [Authorize(Policy = AuthPolicy.Any)]
+    [Authorize(Policy = AuthPolicy.Any, Roles = AuthRole.AdministratorOnly)]
     [Produces("application/json")]
     [ProducesResponseType(typeof(ShareLinkResponse), 200)]
     [ProducesResponseType(404)]
@@ -410,7 +410,7 @@ public class ShareLinksController : ControllerBase
     /// <response code="204">The link and its files are gone.</response>
     /// <response code="404">There is no such link.</response>
     [HttpDelete("api/v{version:apiVersion}/links/{id}")]
-    [Authorize(Policy = AuthPolicy.Any)]
+    [Authorize(Policy = AuthPolicy.Any, Roles = AuthRole.AdministratorOnly)]
     [ProducesResponseType(204)]
     [ProducesResponseType(404)]
     public async Task<IActionResult> Revoke([FromRoute] Guid id)
@@ -589,7 +589,7 @@ public class ShareLinksController : ControllerBase
     {
         recipients = [.. (given ?? [])
             .SelectMany(r => (r ?? string.Empty).Split([',', ';', ' ', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries))
-            .Distinct(StringComparer.OrdinalIgnoreCase)];
+            .Distinct(StringComparer.OrdinalIgnoreCase),];
 
         problem = null;
 

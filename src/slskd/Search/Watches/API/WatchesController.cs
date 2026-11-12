@@ -182,7 +182,7 @@ public class WatchesController : ControllerBase
     /// <response code="200">The request completed successfully.</response>
     /// <response code="400">The specified value is not valid.</response>
     [HttpPost("/api/v{version:apiVersion}/watches/ignores")]
-    [Authorize(Policy = AuthPolicy.Any)]
+    [Authorize(Policy = AuthPolicy.Any, Roles = AuthRole.ReadWriteOrAdministrator)]
     [ProducesResponseType(typeof(Ignore), 200)]
     [ProducesResponseType(400)]
     public async Task<IActionResult> AddIgnore([FromBody] IgnoreRequest request)
@@ -213,7 +213,7 @@ public class WatchesController : ControllerBase
     /// <returns></returns>
     /// <response code="204">The request completed successfully.</response>
     [HttpDelete("/api/v{version:apiVersion}/watches/ignores/{ignoreId}")]
-    [Authorize(Policy = AuthPolicy.Any)]
+    [Authorize(Policy = AuthPolicy.Any, Roles = AuthRole.ReadWriteOrAdministrator)]
     [ProducesResponseType(204)]
     public async Task<IActionResult> DeleteIgnore([FromRoute] Guid ignoreId)
     {
@@ -249,7 +249,7 @@ public class WatchesController : ControllerBase
     /// <response code="400">The specified watch is not valid.</response>
     /// <response code="404">The specified search does not exist.</response>
     [HttpPut]
-    [Authorize(Policy = AuthPolicy.Any)]
+    [Authorize(Policy = AuthPolicy.Any, Roles = AuthRole.ReadWriteOrAdministrator)]
     [ProducesResponseType(typeof(Watch), 200)]
     [ProducesResponseType(400)]
     [ProducesResponseType(404)]
@@ -343,7 +343,7 @@ public class WatchesController : ControllerBase
     /// <returns></returns>
     /// <response code="204">The request completed successfully.</response>
     [HttpDelete]
-    [Authorize(Policy = AuthPolicy.Any)]
+    [Authorize(Policy = AuthPolicy.Any, Roles = AuthRole.ReadWriteOrAdministrator)]
     [ProducesResponseType(204)]
     public async Task<IActionResult> Delete([FromRoute] Guid id)
     {
@@ -359,7 +359,7 @@ public class WatchesController : ControllerBase
     /// <response code="200">The request completed successfully.</response>
     /// <response code="404">There is no watch on the specified search.</response>
     [HttpPost("run")]
-    [Authorize(Policy = AuthPolicy.Any)]
+    [Authorize(Policy = AuthPolicy.Any, Roles = AuthRole.ReadWriteOrAdministrator)]
     [ProducesResponseType(typeof(WatchRun), 200)]
     [ProducesResponseType(404)]
     public async Task<IActionResult> Run([FromRoute] Guid id)

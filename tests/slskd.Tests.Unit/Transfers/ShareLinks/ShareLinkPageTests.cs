@@ -32,7 +32,11 @@
 
 namespace slskd.Tests.Unit.Transfers.ShareLinks;
 
+using System.Linq;
+using System.Reflection;
+using Microsoft.AspNetCore.Mvc;
 using slskd.Transfers.ShareLinks;
+using slskd.Transfers.ShareLinks.API;
 using Xunit;
 
 public class ShareLinkPageTests
@@ -69,5 +73,18 @@ public class ShareLinkPageTests
         var html = ShareLinkPage.WithHead(Page, "<script>window.track()</script>");
 
         Assert.Contains("'sha256-", ShareLinkPagePolicy.For(html));
+    }
+
+    [Fact]
+    public void Nothing_Is_Injected_Into_The_Page_After_Its_Policy_Is_Made()
+    {
+        // the urlBase script would arrive after the policy was worked out from the page, and be refused by the browser
+        Assert.Contains(ShareLinkPage.PathPrefix, Program.HTMLInjectionExcludedRoutes);
+
+        // and the prefix is the page's real route, so renaming one cannot quietly undo the other
+        var route = typeof(ShareLinksController).GetMethod(nameof(ShareLinksController.Page))
+            .GetCustomAttributes<HttpGetAttribute>().Single().Template;
+
+        Assert.StartsWith(ShareLinkPage.PathPrefix.TrimStart('/'), route);
     }
 }

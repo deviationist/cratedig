@@ -174,7 +174,7 @@ public class CompareController : ControllerBase
     /// <response code="400">The downloads cannot be compared as asked; the body says why.</response>
     /// <response code="404">Compare is not available on a relay agent.</response>
     [HttpPost]
-    [Authorize(Policy = AuthPolicy.Any)]
+    [Authorize(Policy = AuthPolicy.Any, Roles = AuthRole.ReadWriteOrAdministrator)]
     [Consumes("application/json")]
     [ProducesResponseType(typeof(CompareResponse), 200)]
     [ProducesResponseType(typeof(string), 400)]
