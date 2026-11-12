@@ -181,6 +181,16 @@ namespace slskd
         public static string FullVersion { get; } = $"{SemanticVersion} ({InformationalVersion})";
 
         /// <summary>
+        ///     Gets the routes whose HTML the urlBase script is not injected into.
+        /// </summary>
+        /// <remarks>
+        ///     The share link page is among them: it is served under a policy made from the page as it leaves the
+        ///     controller, so a script added after that is refused by the browser -- and the page needs nothing from
+        ///     the app, being self-contained by design.
+        /// </remarks>
+        public static IReadOnlyList<string> HTMLInjectionExcludedRoutes { get; } = ["/api", "/swagger", OfflinePage.Path, slskd.Transfers.ShareLinks.ShareLinkPage.PathPrefix];
+
+        /// <summary>
         ///     Gets the minor version to identify this client on the network.
         /// </summary>
         /// <remarks>
@@ -1159,7 +1169,7 @@ namespace slskd
             app.UseHTMLRewrite("((\\.)?\\/pwa\\/)", $"{(urlBase == "/" ? string.Empty : urlBase)}/pwa/");
 
             // inject urlBase and port into any html files we serve as a window-scoped javascript variable
-            app.UseHTMLInjection($"<script>window.urlBase=\"{urlBase}\";window.port={OptionsAtStartup.Web.Port}</script>", excludedRoutes: new[] { "/api", "/swagger", OfflinePage.Path });
+            app.UseHTMLInjection($"<script>window.urlBase=\"{urlBase}\";window.port={OptionsAtStartup.Web.Port}</script>", excludedRoutes: HTMLInjectionExcludedRoutes);
 
             Log.Information("Using base url {UrlBase}", urlBase);
 
