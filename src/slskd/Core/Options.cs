@@ -3993,6 +3993,11 @@ namespace slskd
                 /// <summary>
                 ///     Gets the topic to publish to.
                 /// </summary>
+                /// <remarks>
+                ///     Secret, because on a public server the topic is the only credential: anyone who knows it can
+                ///     subscribe to everything sent there, and the options are readable by read-only API keys.
+                /// </remarks>
+                [Secret]
                 public string Topic { get; init; } = null;
 
                 /// <summary>
