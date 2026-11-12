@@ -33,6 +33,7 @@
 namespace slskd.Transfers.ShareLinks;
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
@@ -60,39 +61,66 @@ public static partial class ShareLinkPagePolicy
     ///     Returns the policy for the specified page.
     /// </summary>
     /// <param name="html">The page, exactly as it is served.</param>
+    /// <param name="allow">Outside sources the operator has allowed, by kind; none if null.</param>
     /// <returns>The policy.</returns>
-    public static string For(string html)
+    public static string For(string html, Options.TransfersOptions.ShareLinksOptions.ShareLinkPageSourcesOptions allow = null)
     {
         ArgumentNullException.ThrowIfNull(html);
 
         return string.Join("; ", [
             "default-src 'none'",
-            $"script-src {HashesOf(ScriptBlock(), html)}",
-            $"style-src {HashesOf(StyleBlock(), html)}",
-            "img-src data:",
-            "connect-src 'self'",
+            $"script-src {Sources(HashesOf(ScriptBlock(), html), allow?.Script)}",
+            $"style-src {Sources(HashesOf(StyleBlock(), html), allow?.Style)}",
+            $"img-src {Sources(["data:"], allow?.Img)}",
+            $"font-src {Sources([], allow?.Font)}",
+            $"connect-src {Sources(["'self'"], allow?.Connect)}",
             "base-uri 'none'",
             "form-action 'none'",
             "frame-ancestors 'none'",
         ]);
     }
 
-    private static string HashesOf(Regex block, string html)
+    /// <summary>
+    ///     Returns a value indicating whether the specified text is a source an operator may add to the policy: one
+    ///     named host, over https or wss.
+    /// </summary>
+    /// <remarks>
+    ///     Deliberately narrower than what CSP accepts. A source added here lets whatever it serves run on, or read
+    ///     from, the one page of this instance that strangers open, with the link's token in its address. So it has
+    ///     to name a host: no bare <c>*</c>, no scheme alone (<c>https:</c> is every site there is), no quoted keyword
+    ///     (inline blocks are allowed by hash already, and <c>'unsafe-inline'</c> would undo that), and nothing over
+    ///     plain http, which anyone on the path could replace. A subdomain wildcard (<c>https://*.example.com</c>) is
+    ///     still one operator's domain. Nothing that could end a source list or a directive gets through, so an entry
+    ///     can only ever add itself.
+    /// </remarks>
+    /// <param name="source">The text.</param>
+    /// <returns>A value indicating whether it is such a source.</returns>
+    public static bool IsSource(string source)
+        => !string.IsNullOrEmpty(source) && HostSource().IsMatch(source);
+
+    private static string Sources(IEnumerable<string> own, IEnumerable<string> allowed)
     {
-        var hashes = block.Matches(html)
+        var sources = own.Concat((allowed ?? []).Where(IsSource)).Distinct().ToList();
+
+        // a directive with nothing in it allows nothing
+        return sources.Count > 0 ? string.Join(' ', sources) : "'none'";
+    }
+
+    private static List<string> HashesOf(Regex block, string html)
+        => block.Matches(html)
             .Select(match => $"'sha256-{Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(match.Groups[1].Value)))}'")
             .Distinct()
             .ToList();
 
-        // a page with none of the kind allows none of the kind
-        return hashes.Count > 0 ? string.Join(' ', hashes) : "'none'";
-    }
-
-    // only blocks with no attributes: the page has no other kind, and one with a src would be a request this policy
-    // refuses anyway
-    [GeneratedRegex("<script>(.*?)</script>", RegexOptions.Singleline)]
+    // inline blocks, attributes or not -- markup added to the page may write <script type="module"> -- but not one with
+    // a src: its content is never run, and what it loads is allowed by source, not by hash
+    [GeneratedRegex("<script(?![^>]*\\bsrc\\s*=)(?:\\s[^>]*)?>(.*?)</script>", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
     private static partial Regex ScriptBlock();
 
-    [GeneratedRegex("<style>(.*?)</style>", RegexOptions.Singleline)]
+    [GeneratedRegex("<style(?:\\s[^>]*)?>(.*?)</style>", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
     private static partial Regex StyleBlock();
+
+    // https://(*.)host.name[:port][/path], or wss://; the host has at least two labels, so * and a bare word are out
+    [GeneratedRegex("^(?:https|wss)://(?:\\*\\.)?[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+(?::[0-9]{1,5})?(?:/[a-z0-9._~!$&()*+=:@%/-]*)?$", RegexOptions.IgnoreCase)]
+    private static partial Regex HostSource();
 }

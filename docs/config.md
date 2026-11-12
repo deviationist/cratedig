@@ -594,6 +594,7 @@ Off by default.  Turning it off stops every link working at once; their files ar
 | `--share-links-base-url`     | `SLSKD_SHARE_LINKS_BASE_URL`     | The address links are made from; blank uses the UI's           |
 | `--share-links-default-days` | `SLSKD_SHARE_LINKS_DEFAULT_DAYS` | Days a new link lasts unless told otherwise                    |
 | `--share-links-max-days`     | `SLSKD_SHARE_LINKS_MAX_DAYS`     | The most days a link may last                                  |
+| `--share-links-page-head`    | `SLSKD_SHARE_LINKS_PAGE_HEAD`    | Markup added at the end of the link page's head                |
 
 #### **YAML**
 ```yaml
@@ -604,7 +605,67 @@ transfers:
     base_url: ~
     default_days: 7
     max_days: 90
+    page:
+      head: ~
+      allow:
+        script: []
+        style: []
+        connect: []
+        img: []
+        font: []
 ```
+
+### Adding to the link page
+
+`page.head` is markup added at the end of the link page's `<head>`: an analytics script, a stylesheet, a meta tag.  The page is served under a
+Content-Security-Policy that allows nothing but the page itself, so markup that loads anything from elsewhere does nothing until its address is listed
+under `page.allow`, by kind:
+
+| `allow` | Directive | For |
+| ------- | --------- | --- |
+| `script` | `script-src` | scripts loaded with `<script src>` |
+| `style` | `style-src` | stylesheets loaded with `<link rel="stylesheet">` |
+| `connect` | `connect-src` | where a script sends requests: an analytics endpoint |
+| `img` | `img-src` | images: a tracking pixel, a logo |
+| `font` | `font-src` | web fonts |
+
+Inline `<script>` and `<style>` blocks need no listing: the policy is made from the page as it is served, the additions included, and allows each
+inline block by its hash.  Inline event handlers (`onload=`) and `style=` attributes stay refused.
+
+Each `allow` entry must name one host over `https://` (or `wss://`), such as `https://stats.example.com` or `https://*.example.com`.  Anything wider is
+refused at startup: a bare `*`, a scheme alone (`https:`), plain `http://`, and quoted keywords such as `'unsafe-inline'`.  Nothing else in the policy
+can be changed: frames, forms, `<base>` and being framed stay refused.
+
+**Whatever is added runs with the page's full access, and the page's address is the link.**  The token in `/l/{token}` is all it takes to download
+the files, and every script on the page can read it.  Add only scripts from a host you trust as much as this instance, best one you run yourself, and
+check what an analytics script records: most send the page's address with every page view, which would store every link in the analytics database.
+Have it send a redacted address instead, and leave off download and outbound-link tracking, which would record the download addresses, which carry the
+token too.  With [Plausible](https://plausible.io) (its `pa-*.js` script):
+
+```yaml
+transfers:
+  share_links:
+    page:
+      head: |
+        <script async src="https://stats.example.com/js/pa-XXXXXXXX.js"></script>
+        <script>
+          window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};
+          plausible.init({
+            fileDownloads: false,
+            outboundLinks: false,
+            transformRequest: function (event) {
+              event.u = event.u.replace(/\/l\/[^/?#]+/, '/l/_');
+              return event;
+            }
+          });
+        </script>
+      allow:
+        script: [https://stats.example.com]
+        connect: [https://stats.example.com]
+```
+
+The page sends no referrer, so a script loaded from elsewhere is not told the address that way; it can still read it on the page.  Changes take effect
+on the next page load, without a restart.
 
 ## Compare
 
