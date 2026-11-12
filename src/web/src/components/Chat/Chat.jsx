@@ -67,7 +67,13 @@ class Chat extends Component {
     this.setState(
       {
         active: sessionStorage.getItem(activeChatKey) || '',
-        interval: window.setInterval(this.fetchConversations, 5_000),
+        interval: window.setInterval(async () => {
+          try {
+            await this.fetchConversations();
+          } catch (error) {
+            console.error(error);
+          }
+        }, 5_000),
       },
       async () => {
         await this.fetchConversations();

@@ -121,7 +121,7 @@ const Transfers = ({ direction, server }) => {
           });
 
           if (controller.signal.aborted) return;
-          setTransfers(response);
+          setTransfers(response ?? []);
         } catch (error) {
           if (controller.signal.aborted) return;
           console.error(error);
@@ -150,7 +150,7 @@ const Transfers = ({ direction, server }) => {
   usePullRefresh(async () => {
     const asked = direction;
     const response = await transfersLibrary.getAll({ direction: asked });
-    if (asked === direction) setTransfers(response);
+    if (asked === direction) setTransfers(response ?? []);
   });
 
   useMemo(() => {

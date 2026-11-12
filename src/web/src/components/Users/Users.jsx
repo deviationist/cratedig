@@ -4,7 +4,7 @@ import { usePullRefresh } from '../../lib/pullToRefresh';
 import * as users from '../../lib/users';
 import PlaceholderSegment from '../Shared/PlaceholderSegment';
 import User from './User';
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useHistory, useParams } from 'react-router-dom';
 import { Icon, Input, Item, Loader, Message, Segment } from 'semantic-ui-react';
 
@@ -72,12 +72,12 @@ const Users = () => {
 
   const keyUp = (event) => (event.key === 'Escape' ? clear() : '');
 
-  useLayoutEffect(() => {
-    document.removeEventListener('keyup', keyUp, false);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
   useEffect(() => {
     document.addEventListener('keyup', keyUp, false);
+
+    return () => {
+      document.removeEventListener('keyup', keyUp, false);
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /*

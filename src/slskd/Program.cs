@@ -468,7 +468,17 @@ namespace slskd
 
                 if (OptionsAtStartup.Debug)
                 {
-                    Log.Information($"Configuration:\n{Configuration.GetDebugView()}");
+                    // redact values for any key matching the name of a property marked [Secret]. keys from YAML may be
+                    // snake or kebab case, so normalize before comparing. this over-redacts, which is fine here
+                    var secretNames = typeof(Options).Assembly.GetTypes()
+                        .Where(t => t == typeof(Options) || (t.FullName?.StartsWith($"{typeof(Options).FullName}+") ?? false))
+                        .SelectMany(t => t.GetProperties())
+                        .Where(p => p.GetCustomAttributes(typeof(SecretAttribute), inherit: false).Length > 0)
+                        .Select(p => p.Name.ToLowerInvariant())
+                        .ToHashSet();
+
+                    Log.Information($"Configuration:\n{Configuration.GetDebugView(context =>
+                        secretNames.Contains(context.Key.Replace("_", string.Empty).Replace("-", string.Empty).ToLowerInvariant()) ? "*****" : context.Value)}");
                 }
 
                 if (!OptionsAtStartup.TryValidate(out var result))
@@ -479,7 +489,7 @@ namespace slskd
             }
             catch (Exception ex)
             {
-                Log.Information($"Invalid configuration: {(!OptionsAtStartup.Debug ? ex : ex.Message)}");
+                Log.Information($"Invalid configuration: {(OptionsAtStartup.Debug ? ex : ex.Message)}");
                 return;
             }
 
@@ -523,11 +533,6 @@ namespace slskd
             Log.Information("Using application directory {AppDirectory}", AppDirectory);
             Log.Information("Using configuration file {ConfigurationFile}", ConfigurationFile);
 
-            if (OptionsAtStartup.Flags.Dumpable)
-            {
-                Log.Warning("Application memory dumps are ENABLED; this can expose sensitive information, including environment variables from the shell.  Disable Flags.Dumpable to disable.");
-            }
-
             if (OptionsAtStartup.Flags.NoConfigWatch)
             {
                 Log.Warning("Configuration watch DISABLED; all configuration changes will require a restart to take effect");
@@ -544,7 +549,7 @@ namespace slskd
 
             if (!string.IsNullOrEmpty(OptionsAtStartup.Logger.Loki))
             {
-                Log.Information("Forwarding logs to Grafana Loki instance at {LoggerLokiUrl}", OptionsAtStartup.Logger.Loki);
+                Log.Information("Forwarding logs to Grafana Loki");
             }
 
             // bootstrap the ASP.NET application
@@ -1258,12 +1263,14 @@ services.AddSingleton<slskd.Player.AnalysisProvider>();
                         if (!options.Authentication.Disabled)
                         {
                             var auth = context.Request.Headers["Authorization"].FirstOrDefault();
-                            var providedCreds = auth?.Split(' ').Last();
+                            var providedCreds = auth?.Split(' ').Last() ?? string.Empty;
                             var validCreds = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{options.Authentication.Username}:{options.Authentication.Password}"));
 
+                            // use paranoid FixedTimeEquals to protect against time attacks
                             if (string.IsNullOrEmpty(auth) ||
-                                !auth.StartsWith("Basic", StringComparison.InvariantCultureIgnoreCase) ||
-                                !string.Equals(providedCreds, validCreds, StringComparison.InvariantCultureIgnoreCase))
+                                !auth.StartsWith("Basic ", StringComparison.InvariantCultureIgnoreCase) ||
+                                string.IsNullOrEmpty(providedCreds) ||
+                                !System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(providedCreds), Encoding.UTF8.GetBytes(validCreds)))
                             {
                                 context.Response.StatusCode = (int)HttpStatusCode.Unauthorized;
                                 return;
@@ -1379,7 +1386,7 @@ services.AddSingleton<slskd.Player.AnalysisProvider>();
                         var record = new LogRecord()
                         {
                             Timestamp = logEvent.Timestamp.LocalDateTime,
-                            Context = logEvent.Properties["SourceContext"].ToString().TrimStart('"').TrimEnd('"'),
+                            Context = logEvent.Properties.TryGetValue("SourceContext", out var sourceContext) ? sourceContext.ToString().TrimStart('"').TrimEnd('"') : null,
                             SubContext = logEvent.Properties.ContainsKey("SubContext") ? logEvent.Properties["SubContext"].ToString().TrimStart('"').TrimEnd('"') : null,
                             Level = logEvent.Level.ToString(),
                             Message = message.TrimStart('"').TrimEnd('"'),
@@ -1411,11 +1418,11 @@ services.AddSingleton<slskd.Player.AnalysisProvider>();
 
                 if (e.IsTerminating)
                 {
-                    Serilog.Log.Logger.Fatal(exception, "Unhandled fatal exception: {Message}", e.IsTerminating);
+                    Serilog.Log.Logger.Fatal(exception, "Unhandled fatal exception: {Message}", exception?.Message);
                 }
                 else
                 {
-                    Serilog.Log.Logger.Error(exception, "Unhandled exception: {Message}", exception.Message);
+                    Serilog.Log.Logger.Error(exception, "Unhandled exception: {Message}", exception?.Message);
                 }
             };
         }

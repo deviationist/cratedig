@@ -730,9 +730,9 @@ namespace slskd.Transfers.Downloads
 
                 var transfer = context.Transfers.Find(id);
 
-                if (transfer == default)
+                if (transfer == default || transfer.Direction != TransferDirection.Download)
                 {
-                    throw new NotFoundException($"No download matching id ${id}");
+                    throw new NotFoundException($"No download matching id {id}");
                 }
 
                 var place = await Client.GetDownloadPlaceInQueueAsync(transfer.Username, transfer.Filename);
@@ -1090,6 +1090,12 @@ namespace slskd.Transfers.Downloads
 
             t.EndedAt ??= DateTime.UtcNow;
 
+            // Retry.Do() wraps failures in an AggregateException; use the most recent so that the state reflects what happened
+            if (exception is AggregateException aggregate && aggregate.InnerExceptions.Count > 0)
+            {
+                exception = aggregate.InnerExceptions.Last();
+            }
+
             // Soulseek.NET will include the filename and username in some messages; this is useful for many things but not tracking
             // exceptions in a database. when we encounter one of these, drop the first segment.
             var m = exception.Message;
@@ -1101,6 +1107,7 @@ namespace slskd.Transfers.Downloads
                 {
                     OperationCanceledException => TransferStates.Cancelled,
                     TimeoutException => TransferStates.TimedOut,
+                    TransferRejectedException => TransferStates.Rejected,
                     _ => TransferStates.Errored,
                 };
             }
@@ -1252,20 +1259,6 @@ namespace slskd.Transfers.Downloads
                                 transfer.EnqueuedAt ??= DateTime.UtcNow;
                             }
 
-                            // important! the transfer on the Soulseek.NET side may have completed, but the slskd transfer
-                            // *might* still have remaining retry attempts. leave this non-committal for now, and allow
-                            // the final update after all retry attempts have been exhausted to add it.
-                            // this means that the ONLY way to check whether a transfer is really 'dead' inclusive of all
-                            // retries is to look for this flag
-                            if (args.Transfer.State.HasFlag(TransferStates.Completed)
-                                && !args.Transfer.State.HasFlag(TransferStates.Succeeded)
-                                && transfer.Attempts < retryOptions.Attempts)
-                            {
-                                transfer.State = TransferStates.Queued | TransferStates.Locally;
-                            }
-
-                            transfer = transfer.WithSoulseekTransfer(args.Transfer);
-
                             Telemetry.Metrics.Update(() =>
                             {
                                 if (!TransferStateCategories.Queued.Contains(args.PreviousState) && TransferStateCategories.Queued.Contains(transfer.State))
@@ -1284,6 +1277,18 @@ namespace slskd.Transfers.Downloads
                             });
 
                             stateHistory.Add(transfer.State);
+
+                            // important! the transfer on the Soulseek.NET side may have completed, but the slskd transfer
+                            // *might* still have remaining retry attempts. leave this non-committal for now, and allow
+                            // the final update after all retry attempts have been exhausted to add it.
+                            // this means that the ONLY way to check whether a transfer is really 'dead' inclusive of all
+                            // retries is to look for this flag
+                            if (args.Transfer.State.HasFlag(TransferStates.Completed)
+                                && !args.Transfer.State.HasFlag(TransferStates.Succeeded)
+                                && transfer.Attempts < retryOptions.Attempts)
+                            {
+                                transfer.State = TransferStates.Queued | TransferStates.Locally;
+                            }
 
                             // todo: broadcast
                             SynchronizedUpdate(transfer, semaphore: updateSyncRoot, cancellationToken: cancellationToken);
@@ -1598,11 +1603,10 @@ namespace slskd.Transfers.Downloads
             {
                 Log.Error(ex, "Download of {Filename} from user {Username} failed: {Message}", transfer.Filename, transfer.Username, ex.Message);
 
+                SynchronizedUpdate(transfer, semaphore: updateSyncRoot, cancellationToken: CancellationToken.None);
                 TryFail(transfer.Id, exception: ex);
 
-                // todo: broadcast
-                SynchronizedUpdate(transfer, semaphore: updateSyncRoot, cancellationToken: CancellationToken.None);
-
+                // todo: broadcast transfer state to a hub
                 Telemetry.Metrics.Update(() =>
                 {
                     Telemetry.Metrics.Transfers.Downloads.Completed.Failed.Inc(1);
@@ -1614,11 +1618,10 @@ namespace slskd.Transfers.Downloads
             {
                 Log.Error(ex, "Download of {Filename} from user {Username} failed: {Message}", transfer.Filename, transfer.Username, ex.Message);
 
+                SynchronizedUpdate(transfer, semaphore: updateSyncRoot, cancellationToken: CancellationToken.None);
                 TryFail(transfer.Id, exception: ex);
 
-                // todo: broadcast
-                SynchronizedUpdate(transfer, semaphore: updateSyncRoot, cancellationToken: CancellationToken.None);
-
+                // todo: broadcast transfer state to a hub
                 Telemetry.Metrics.Update(() =>
                 {
                     Telemetry.Metrics.Transfers.Downloads.Completed.Failed.Inc(1);
