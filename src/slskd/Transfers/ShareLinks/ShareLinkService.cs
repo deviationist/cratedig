@@ -144,6 +144,27 @@ public class ShareLinkService
     private string Root => Path.GetFullPath(LinkOptions.Directory);
 
     /// <summary>
+    ///     Returns the title a link of files with the specified entry names gets when none is given.
+    /// </summary>
+    /// <param name="names">The files' entry names.</param>
+    /// <returns>The title.</returns>
+    public static string TitleFor(IReadOnlyList<string> names)
+    {
+        if (names.Count == 1)
+        {
+            return Path.GetFileName(names[0]);
+        }
+
+        // an entry name is the file's folder and its name, so the part before the separator is the folder
+        var folders = names
+            .Select(n => n.Contains('/') ? n[..n.LastIndexOf('/')] : string.Empty)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return folders.Count == 1 && folders[0].Length > 0 ? folders[0] : $"{names.Count} files";
+    }
+
+    /// <summary>
     ///     Creates a share serving copies of the specified downloads.
     /// </summary>
     /// <param name="transferIds">The downloads to share. Each must have finished successfully and still have its file.</param>
@@ -619,27 +640,6 @@ public class ShareLinkService
         {
             SweepGate.Release();
         }
-    }
-
-    /// <summary>
-    ///     Returns the title a link of files with the specified entry names gets when none is given.
-    /// </summary>
-    /// <param name="names">The files' entry names.</param>
-    /// <returns>The title.</returns>
-    public static string TitleFor(IReadOnlyList<string> names)
-    {
-        if (names.Count == 1)
-        {
-            return Path.GetFileName(names[0]);
-        }
-
-        // an entry name is the file's folder and its name, so the part before the separator is the folder
-        var folders = names
-            .Select(n => n.Contains('/') ? n[..n.LastIndexOf('/')] : string.Empty)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        return folders.Count == 1 && folders[0].Length > 0 ? folders[0] : $"{names.Count} files";
     }
 
     private static string KeyOf(string address) => (address ?? string.Empty).Trim().ToLowerInvariant();

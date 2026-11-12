@@ -38,6 +38,27 @@ using System.Threading;
 using System.Threading.Tasks;
 
 /// <summary>
+///     Sends mail.
+/// </summary>
+public interface IMailAdapter
+{
+    /// <summary>
+    ///     Gets the name by which this adapter is selected in configuration.
+    /// </summary>
+    string Name { get; }
+
+    /// <summary>
+    ///     Sends the specified <paramref name="mail"/>.
+    /// </summary>
+    /// <param name="mail">The mail to send.</param>
+    /// <param name="from">The address to send from.</param>
+    /// <param name="to">The address to send to.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The operation context.</returns>
+    Task SendAsync(Mail mail, string from, string to, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
 ///     A message to be sent.
 /// </summary>
 /// <remarks>
@@ -65,27 +86,6 @@ public record Mail
     ///     Gets the HTML body, if any.
     /// </summary>
     public string Html { get; init; }
-}
-
-/// <summary>
-///     Sends mail.
-/// </summary>
-public interface IMailAdapter
-{
-    /// <summary>
-    ///     Gets the name by which this adapter is selected in configuration.
-    /// </summary>
-    string Name { get; }
-
-    /// <summary>
-    ///     Sends the specified <paramref name="mail"/>.
-    /// </summary>
-    /// <param name="mail">The mail to send.</param>
-    /// <param name="from">The address to send from.</param>
-    /// <param name="to">The address to send to.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The operation context.</returns>
-    Task SendAsync(Mail mail, string from, string to, CancellationToken cancellationToken = default);
 }
 
 /// <summary>

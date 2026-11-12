@@ -79,49 +79,6 @@ public partial class BuiltinAnalyser
     private IMediaTool MediaTool { get; }
 
     /// <summary>
-    ///     Analyses <paramref name="file"/>.
-    /// </summary>
-    /// <param name="file">The file.</param>
-    /// <param name="cancellationToken">A token to cancel the analysis.</param>
-    /// <returns>The analysis, in the contract's shape.</returns>
-    public async Task<JsonElement> AnalyseAsync(FileInfo file, CancellationToken cancellationToken = default)
-    {
-        var facts = Facts(await MediaTool.ProbeAsync(file.FullName, cancellationToken), FlacAudioBytes(file));
-        var channels = Math.Min(2, Math.Max(1, facts.Channels));
-        var lossy = !Measurer.LosslessCodecs.Contains(facts.Codec ?? string.Empty);
-
-        // a lossy file can hold peaks above full scale, which an integer decode would cut off -- and then measure as
-        // clipping of its own making. a lossless one cannot, and keeps the integers its bit-depth check needs
-        var format = lossy ? "f32le" : facts.DeclaredBits > 16 ? "s32le" : "s16le";
-        var full = format switch { "f32le" => 1.0, "s32le" => Math.Pow(2, 31), _ => Math.Pow(2, 15) };
-
-        var measurer = new Measurer(facts, channels, full);
-
-        // the checksum is a second read of the whole file, so it is taken while the decode runs rather than after it:
-        // a third of the time on a file where the read is the slow part. awaited either way, so a failure of one is
-        // never left unobserved behind the other
-        var checksum = MediaTool.HashAudioAsync(file.FullName, cancellationToken);
-
-        try
-        {
-            using (var sink = new PcmSink(measurer, format, channels))
-            {
-                await MediaTool.DecodeToAsync(file.FullName, facts.SampleRate, channels, format, sink, cancellationToken);
-            }
-        }
-        catch
-        {
-            await checksum.ContinueWith(_ => { }, TaskScheduler.Default);
-            throw;
-        }
-
-        var measurements = measurer.Finish();
-        var id = $"{await checksum}-{Version}";
-
-        return Report.Document(measurements, id);
-    }
-
-    /// <summary>
     ///     The container's facts, from ffprobe's JSON.
     /// </summary>
     /// <param name="json">What ffprobe wrote.</param>
@@ -141,15 +98,11 @@ public partial class BuiltinAnalyser
 
         // ffprobe is inconsistent about where a PCM depth appears; three sources, ending with the codec name, which
         // for PCM *is* the depth
-        var declared = Whole(stream, "bits_per_raw_sample") is { } raw && raw != 0 ? raw
-            : Whole(stream, "bits_per_sample") is { } bps && bps != 0 ? bps
-            : PcmDepth().Match(codec) is { Success: true } m ? int.Parse(m.Groups[1].Value) : (long?)null;
+        var declared = Whole(stream, "bits_per_raw_sample") is { } raw && raw != 0 ? raw : Whole(stream, "bits_per_sample") is { } bps && bps != 0 ? bps : PcmDepth().Match(codec) is { Success: true } m ? int.Parse(m.Groups[1].Value) : (long?)null;
 
         var duration = Real(format, "duration");
         var streamRate = Whole(stream, "bit_rate");
-        long? bitRate = streamRate is { } s && s != 0 ? s
-            : codec == "flac" && flacAudioBytes is { } bytes && bytes != 0 && duration is { } d && d != 0 ? Py.RoundToLong(bytes * 8 / d)
-            : Whole(format, "bit_rate");
+        long? bitRate = streamRate is { } s && s != 0 ? s : codec == "flac" && flacAudioBytes is { } bytes && bytes != 0 && duration is { } d && d != 0 ? Py.RoundToLong(bytes * 8 / d) : Whole(format, "bit_rate");
 
         var container = (Text(format, "format_name") ?? string.Empty).Split(',')[0];
 
@@ -227,6 +180,49 @@ public partial class BuiltinAnalyser
         {
             return null;
         }
+    }
+
+    /// <summary>
+    ///     Analyses <paramref name="file"/>.
+    /// </summary>
+    /// <param name="file">The file.</param>
+    /// <param name="cancellationToken">A token to cancel the analysis.</param>
+    /// <returns>The analysis, in the contract's shape.</returns>
+    public async Task<JsonElement> AnalyseAsync(FileInfo file, CancellationToken cancellationToken = default)
+    {
+        var facts = Facts(await MediaTool.ProbeAsync(file.FullName, cancellationToken), FlacAudioBytes(file));
+        var channels = Math.Min(2, Math.Max(1, facts.Channels));
+        var lossy = !Measurer.LosslessCodecs.Contains(facts.Codec ?? string.Empty);
+
+        // a lossy file can hold peaks above full scale, which an integer decode would cut off -- and then measure as
+        // clipping of its own making. a lossless one cannot, and keeps the integers its bit-depth check needs
+        var format = lossy ? "f32le" : facts.DeclaredBits > 16 ? "s32le" : "s16le";
+        var full = format switch { "f32le" => 1.0, "s32le" => Math.Pow(2, 31), _ => Math.Pow(2, 15) };
+
+        var measurer = new Measurer(facts, channels, full);
+
+        // the checksum is a second read of the whole file, so it is taken while the decode runs rather than after it:
+        // a third of the time on a file where the read is the slow part. awaited either way, so a failure of one is
+        // never left unobserved behind the other
+        var checksum = MediaTool.HashAudioAsync(file.FullName, cancellationToken);
+
+        try
+        {
+            using (var sink = new PcmSink(measurer, format, channels))
+            {
+                await MediaTool.DecodeToAsync(file.FullName, facts.SampleRate, channels, format, sink, cancellationToken);
+            }
+        }
+        catch
+        {
+            await checksum.ContinueWith(_ => { }, TaskScheduler.Default);
+            throw;
+        }
+
+        var measurements = measurer.Finish();
+        var id = $"{await checksum}-{Version}";
+
+        return Report.Document(measurements, id);
     }
 
     private static int Read(Stream stream, long position, byte[] into)

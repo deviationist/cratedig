@@ -69,7 +69,7 @@ public static class CompareDocument
     public const double CloseMatch = 0.95;
 
     /// <summary>
-    ///     The document.
+    ///     Builds the compare document: the verdict, the groups and every pair.
     /// </summary>
     /// <param name="files">The files, in the caller's order.</param>
     /// <param name="pairs">Every pair of readable files, scored.</param>

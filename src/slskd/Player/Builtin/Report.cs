@@ -58,6 +58,9 @@ public record Finding(string Code, string Label, string Level, string Value, str
 /// </remarks>
 public static partial class Report
 {
+    /// <summary>A lossy file peaking above this is holding overs, not clipped in the file.</summary>
+    private const double OverDbfs = 0.5;
+
     /// <summary>The cutoff a lossy encoder leaves at each bitrate, read as "the first this is at or below".</summary>
     private static readonly (double Edge, string Name)[] LossySignatures =
     [
@@ -71,9 +74,6 @@ public static partial class Report
     {
         "pcm_s16be", "pcm_s16le", "pcm_s24le", "pcm_s24be", "pcm_s32le",
     };
-
-    /// <summary>A lossy file peaking above this is holding overs, not clipped in the file.</summary>
-    private const double OverDbfs = 0.5;
 
     private static readonly Dictionary<string, int> Severity = new(StringComparer.Ordinal) { ["bad"] = 0, ["warn"] = 1, ["ok"] = 2 };
 
@@ -232,10 +232,10 @@ public static partial class Report
                 where += $" and {m.WalledSpans.Count - 3} more";
             }
 
-            return new("bandwidth", "Bandwidth", "bad", $"lossy in {Py.Percent(share)} of the track",
-                $"Part of this track has a lossy wall and part does not ({where}). The file was assembled from more than one "
-                + "source -- an edit or a bootleg built on whatever copy was to hand. A whole-file average would have called this "
-                + "clean, because the good half hides the bad one.");
+            return Note("bandwidth", "Bandwidth", "bad", $"lossy in {Py.Percent(share)} of the track",
+                $"Part of this track has a lossy wall and part does not ({where}). The file was assembled from more than one ",
+                "source -- an edit or a bootleg built on whatever copy was to hand. A whole-file average would have called this ",
+                "clean, because the good half hides the bad one.");
         }
 
         if (m.CutoffHz is not { } cutoff || cutoff == 0)
@@ -247,27 +247,29 @@ public static partial class Report
 
         if (cutoff >= Measurer.LowpassReportableHz)
         {
-            return new("bandwidth", "Bandwidth", "ok", $"full, to {khz}",
-                "Treble runs right to the top, as a CD-sourced file does. Note this cannot rule out a 320 kbps source: "
-                + "that encoder keeps almost everything, so it looks the same from here.");
+            return Note("bandwidth", "Bandwidth", "ok", $"full, to {khz}",
+                "Treble runs right to the top, as a CD-sourced file does. Note this cannot rule out a 320 kbps source: ",
+                "that encoder keeps almost everything, so it looks the same from here.");
         }
 
         if (m.CliffDb is not { } cliff || cliff == 0 || cliff < Measurer.WallDb)
         {
-            return new("bandwidth", "Bandwidth", "ok", "fades out, no wall",
-                "The treble fades away gradually instead of stopping dead. That is what a real recording looks like -- a "
-                + "lossy source leaves a sharp wall instead. A dark or old mix reads this way too, which is why the "
-                + "frequency alone is not the test.");
+            return Note("bandwidth", "Bandwidth", "ok", "fades out, no wall",
+                "The treble fades away gradually instead of stopping dead. That is what a real recording looks like -- a ",
+                "lossy source leaves a sharp wall instead. A dark or old mix reads this way too, which is why the ",
+                "frequency alone is not the test.");
         }
 
         var label = LossySignatures.Where(s => cutoff <= s.Edge).Select(s => s.Name).FirstOrDefault() ?? "a lossy";
 
-        return new("bandwidth", "Bandwidth", lossless ? "bad" : "warn", $"wall at {khz}",
-            $"Everything above {khz} is gone, and it stops dead ({Py.Fixed(cliff, 0)} dB) rather than fading. That is what "
-            + $"{label} encoder leaves behind."
-            + (lossless
-                ? " This file claims to be lossless, so the audio was most likely lossy before someone re-wrapped it."
-                : " Expected for this format -- a lossy file is supposed to look like this."));
+        var meaning = lossless
+            ? " This file claims to be lossless, so the audio was most likely lossy before someone re-wrapped it."
+            : " Expected for this format -- a lossy file is supposed to look like this.";
+
+        return Note("bandwidth", "Bandwidth", lossless ? "bad" : "warn", $"wall at {khz}",
+            $"Everything above {khz} is gone, and it stops dead ({Py.Fixed(cliff, 0)} dB) rather than fading. That is what ",
+            $"{label} encoder leaves behind.",
+            meaning);
     }
 
     private static Finding SampleRate(Measurements m)
@@ -283,9 +285,9 @@ public static partial class Report
 
         if (rate <= Measurer.HighRateHz)
         {
-            return new("samplerate", "Sample rate", "ok", khz,
-                "An ordinary rate for music. There is no ultrasonic band here for a conversion to have left empty, so "
-                + "there is nothing to test.");
+            return Note("samplerate", "Sample rate", "ok", khz,
+                "An ordinary rate for music. There is no ultrasonic band here for a conversion to have left empty, so ",
+                "there is nothing to test.");
         }
 
         if (m.UltrasonicDb is not { } drop)
@@ -298,16 +300,16 @@ public static partial class Report
 
         if (drop < Measurer.UltrasonicEmptyDb)
         {
-            return new("samplerate", "Sample rate", "ok", $"{khz}, real",
-                $"There is content above {edge}, which neither 44.1 nor 48 kHz can hold, so the rate is carrying "
-                + "something and the file was captured at it.");
+            return Note("samplerate", "Sample rate", "ok", $"{khz}, real",
+                $"There is content above {edge}, which neither 44.1 nor 48 kHz can hold, so the rate is carrying ",
+                "something and the file was captured at it.");
         }
 
-        return new("samplerate", "Sample rate", "warn", $"{khz}, upsampled",
-            $"Stored at {khz}, but the band above {edge} is {Py.Fixed(drop, 0)} dB down -- empty. Only a rate above 48 kHz can "
-            + "hold anything up there, so this was converted up from 44.1 or 48 kHz. The audio is most likely just as good as "
-            + "that source -- upsampling does not damage it -- but the file is larger than it needs to be, and it is not the "
-            + "high-resolution master it looks like.");
+        return Note("samplerate", "Sample rate", "warn", $"{khz}, upsampled",
+            $"Stored at {khz}, but the band above {edge} is {Py.Fixed(drop, 0)} dB down -- empty. Only a rate above 48 kHz can ",
+            "hold anything up there, so this was converted up from 44.1 or 48 kHz. The audio is most likely just as good as ",
+            "that source -- upsampling does not damage it -- but the file is larger than it needs to be, and it is not the ",
+            "high-resolution master it looks like.");
     }
 
     private static Finding Clipping(Measurements m)
@@ -319,9 +321,9 @@ public static partial class Report
 
         if (m.LongestRun < 3)
         {
-            return new("clipping", "Clipping", "ok", $"{m.ClippedSamples} isolated samples",
-                "A few single samples touch maximum. That is a loud master reaching the ceiling, not damage -- you will "
-                + "not hear it.");
+            return Note("clipping", "Clipping", "ok", $"{m.ClippedSamples} isolated samples",
+                "A few single samples touch maximum. That is a loud master reaching the ceiling, not damage -- you will ",
+                "not hear it.");
         }
 
         var worst = Py.Clock(m.WorstAtSeconds);
@@ -343,11 +345,11 @@ public static partial class Report
         {
             var down = Math.Ceiling(m.PeakDbfs * 10) / 10;
 
-            return new("clipping", "Clipping", level, value,
-                $"Peaks reach +{Py.Fixed(m.PeakDbfs, 1)} dBFS, above what any player can output, so the tops are flattened as it "
-                + "plays. They are not flattened in the file: it holds the whole waveform, and turning it down by "
-                + $"{Py.Fixed(down, 1)} dB plays it clean with nothing lost (for an MP3, MP3Gain's undo or a gain change does it "
-                + "without re-encoding)." + seek);
+            return Note("clipping", "Clipping", level, value,
+                $"Peaks reach +{Py.Fixed(m.PeakDbfs, 1)} dBFS, above what any player can output, so the tops are flattened as it ",
+                "plays. They are not flattened in the file: it holds the whole waveform, and turning it down by ",
+                $"{Py.Fixed(down, 1)} dB plays it clean with nothing lost (for an MP3, MP3Gain's undo or a gain change does it ",
+                "without re-encoding)." + seek);
         }
 
         var where = string.Empty;
@@ -362,9 +364,9 @@ public static partial class Report
                     + "has it; if it was gain added before sharing, a copy from another source may be clean.";
         }
 
-        return new("clipping", "Clipping", level, value,
-            "Consecutive samples stuck at maximum, so the tops of the waveform have been flattened. Long runs are audible as "
-            + "distortion on the loudest parts; this cannot be undone." + seek + where);
+        return Note("clipping", "Clipping", level, value,
+            "Consecutive samples stuck at maximum, so the tops of the waveform have been flattened. Long runs are audible as ",
+            "distortion on the loudest parts; this cannot be undone." + seek + where);
     }
 
     private static Finding Bitrate(Measurements m)
@@ -380,9 +382,9 @@ public static partial class Report
 
         if (UncompressedCodecs.Contains(codec))
         {
-            return new("bitrate", "Bitrate", "ok", $"{kbps} kbps",
-                "Uncompressed, so this is just sample rate x bit depth x channels. Every file of this shape has the same "
-                + "number and it says nothing about quality.");
+            return Note("bitrate", "Bitrate", "ok", $"{kbps} kbps",
+                "Uncompressed, so this is just sample rate x bit depth x channels. Every file of this shape has the same ",
+                "number and it says nothing about quality.");
         }
 
         if (Measurer.LosslessCodecs.Contains(codec))
@@ -394,10 +396,10 @@ public static partial class Report
 
             // measured, and recorded so it does not get "improved" into a rule: real 16-bit FLACs came in at 66-71% of
             // raw, and the same tracks upscaled from 128/192/320 kbps MP3 at 62/64/65% -- the ranges overlap
-            return new("bitrate", "Bitrate", "ok", $"{kbps} kbps" + (ratio is { } r && r != 0 ? $" ({Py.Percent(r)} of raw)" : string.Empty),
-                "How well this music compressed, which depends mostly on the music. Measured here, a low figure does not reveal a "
-                + "lossy source -- genuine files land around 66-71% of raw and upscales around 62-65%, which overlaps. The bandwidth "
-                + "row is the test that separates them.");
+            return Note("bitrate", "Bitrate", "ok", $"{kbps} kbps" + (ratio is { } r && r != 0 ? $" ({Py.Percent(r)} of raw)" : string.Empty),
+                "How well this music compressed, which depends mostly on the music. Measured here, a low figure does not reveal a ",
+                "lossy source -- genuine files land around 66-71% of raw and upscales around 62-65%, which overlaps. The bandwidth ",
+                "row is the test that separates them.");
         }
 
         var (level, tail) = kbps switch
@@ -421,11 +423,11 @@ public static partial class Report
 
         var at = Py.Clock(m.DropoutAtSeconds);
 
-        return new("dropouts", "Dropouts", m.LongestDropoutSeconds >= 0.15 || m.Dropouts >= 3 ? "bad" : "warn",
+        return Note("dropouts", "Dropouts", m.LongestDropoutSeconds >= 0.15 || m.Dropouts >= 3 ? "bad" : "warn",
             $"{m.Dropouts} gap{(m.Dropouts != 1 ? "s" : string.Empty)}, longest {Py.Fixed(m.LongestDropoutSeconds, 2)}s at {at}",
-            "The audio goes digitally silent mid-track and comes back. That is a hole in the file -- a failed transfer or a bad rip "
-            + $"-- and no tag or re-encode repairs it; another copy is the only fix. Play from {at} to hear it. A deliberate pause in "
-            + "the arrangement can look the same, so listen before discarding the file.");
+            "The audio goes digitally silent mid-track and comes back. That is a hole in the file -- a failed transfer or a bad rip ",
+            $"-- and no tag or re-encode repairs it; another copy is the only fix. Play from {at} to hear it. A deliberate pause in ",
+            "the arrangement can look the same, so listen before discarding the file.");
     }
 
     private static Finding Bits(Measurements m)
@@ -437,9 +439,9 @@ public static partial class Report
 
         if (m.MeasuredBits is { } real && real != 0 && real < declared)
         {
-            return new("bits", "Bit depth", "warn", $"{real} used of {declared} declared",
-                $"The file says {declared}-bit but only {real} bits ever carry anything -- the rest is padding. It was converted up "
-                + $"from {real}-bit; the extra size buys nothing.");
+            return Note("bits", "Bit depth", "warn", $"{real} used of {declared} declared",
+                $"The file says {declared}-bit but only {real} bits ever carry anything -- the rest is padding. It was converted up ",
+                $"from {real}-bit; the extra size buys nothing.");
         }
 
         return new("bits", "Bit depth", "ok", $"{(m.MeasuredBits is { } r && r != 0 ? r : declared)}-bit",
@@ -452,10 +454,10 @@ public static partial class Report
 
         if (m.MonoShare > 0.02 && m.MonoShare < 0.9995 && stereo)
         {
-            return new("channels", "Channels", "warn", $"mono for {Py.Percent(m.MonoShare)} of the track",
-                "The two channels are identical for part of the track and differ for the rest. Usually an edit stitched from a mono "
-                + "source, or a section that lost a channel in transfer -- either way it is not how the track was mixed, and it is "
-                + "audible as the image collapsing.");
+            return Note("channels", "Channels", "warn", $"mono for {Py.Percent(m.MonoShare)} of the track",
+                "The two channels are identical for part of the track and differ for the rest. Usually an edit stitched from a mono ",
+                "source, or a section that lost a channel in transfer -- either way it is not how the track was mixed, and it is ",
+                "audible as the image collapsing.");
         }
 
         if (m.DualMono)
@@ -468,10 +470,22 @@ public static partial class Report
     }
 
     private static Finding Dynamics(Measurements m)
-        => new("dynamics", "Dynamics", m.CrestDb < 8 ? "warn" : "ok", $"{Py.Fixed(m.CrestDb, 1)} dB crest",
-            "The gap between the loudest peak and the average level. Under about 8 dB means heavily compressed -- loud throughout, "
-            + "with the quiet parts squeezed out. Above roughly 12 dB is comfortable. This is a mastering choice, not a defect, "
-            + "and club-oriented music is often deliberately low.");
+        => Note("dynamics", "Dynamics", m.CrestDb < 8 ? "warn" : "ok", $"{Py.Fixed(m.CrestDb, 1)} dB crest",
+            "The gap between the loudest peak and the average level. Under about 8 dB means heavily compressed -- loud throughout, ",
+            "with the quiet parts squeezed out. Above roughly 12 dB is comfortable. This is a mastering choice, not a defect, ",
+            "and club-oriented music is often deliberately low.");
+
+    /// <summary>
+    ///     Makes a finding whose note is written as the parts it is made of, one to a line, joined exactly as written.
+    /// </summary>
+    /// <param name="code">The finding's code.</param>
+    /// <param name="label">What it is about, for a person.</param>
+    /// <param name="level">How it is judged: <c>ok</c>, <c>warn</c> or <c>bad</c>.</param>
+    /// <param name="value">The measurement, short.</param>
+    /// <param name="note">The explanation, in parts.</param>
+    /// <returns>The finding.</returns>
+    private static Finding Note(string code, string label, string level, string value, params string[] note)
+        => new(code, label, level, value, string.Concat(note));
 
     // m:ss anywhere in a finding: minutes at most three digits and seconds a real sexagesimal pair, so "1:2" is not a time
     [GeneratedRegex(@"\b(\d{1,3}):([0-5]\d)\b")]

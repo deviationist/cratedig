@@ -56,6 +56,33 @@ using SoulseekClientStates = Soulseek.SoulseekClientStates;
 public class WatchService
 {
     /// <summary>
+    ///     The most files a notification lists, and the most it records.
+    /// </summary>
+    /// <remarks>
+    ///     A broad search finds hundreds of files it has never reported on every run, and not because anything new
+    ///     appeared: the network answers a search with whichever peers happen to reply, and the set differs every
+    ///     time. Measured on a popular query, two runs a minute apart returned 252 and 250 responses with 1471 files
+    ///     between them that the first run had not seen. A mail listing all of them is unreadable and a record of all
+    ///     of them is a third of a megabyte per run, so both are capped and the true count is kept alongside.
+    /// </remarks>
+    private const int MaximumFilesListed = 50;
+
+    private const int MaximumFilesRecorded = 200;
+
+    /// <summary>
+    ///     How the recorded file list is written.
+    /// </summary>
+    /// <remarks>
+    ///     camelCase, because this is read by the web client, and everything else this application sends it is
+    ///     camelCase. Written with the serializer's defaults it was PascalCase, so every field of every row read as
+    ///     undefined -- a size of "NaN undefined" beside two empty columns.
+    /// </remarks>
+    private static readonly JsonSerializerOptions RecordedFileOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
+
+    /// <summary>
     ///     Initializes a new instance of the <see cref="WatchService"/> class.
     /// </summary>
     public WatchService(
@@ -91,6 +118,72 @@ public class WatchService
     private SemaphoreSlim Gate { get; } = new(1, 1);
 
     private Options.SearchesOptions.WatchesOptions WatchOptions => OptionsMonitor.CurrentValue.Searches.Watches;
+
+    /// <summary>
+    ///     Deletes every row a watch owns, in a context the caller already holds.
+    /// </summary>
+    /// <remarks>
+    ///     Static, and takes the context, so that deleting a *search* can take its watch with it without the search
+    ///     service having to depend on this one -- it depends on the search service already, and the two tables live
+    ///     in the same database. One place knows which tables a watch owns, which is what stops the next one added
+    ///     from being cleaned up in one path and left behind in the other.
+    /// </remarks>
+    /// <param name="context">The database context to delete through.</param>
+    /// <param name="searchId">The id of the search the watch is on.</param>
+    /// <returns>The operation context.</returns>
+    public static async Task DeleteRowsAsync(SearchDbContext context, Guid searchId)
+    {
+        await context.Watches.Where(w => w.SearchId == searchId).ExecuteDeleteAsync();
+        await context.WatchFiles.Where(f => f.SearchId == searchId).ExecuteDeleteAsync();
+        await context.WatchRuns.Where(r => r.SearchId == searchId).ExecuteDeleteAsync();
+        await context.WatchNotifications.Where(n => n.SearchId == searchId).ExecuteDeleteAsync();
+    }
+
+    /// <summary>
+    ///     Returns the files of <paramref name="search"/> that <paramref name="watch"/> cares about.
+    /// </summary>
+    /// <param name="watch">The watch whose criteria to apply.</param>
+    /// <param name="search">The search whose responses to read.</param>
+    /// <returns>The matching files.</returns>
+    public static List<Match> Matches(Watch watch, Search search)
+    {
+        var filter = SearchFilters.Parse(watch.Filter);
+        var matches = new List<Match>();
+
+        foreach (var response in search.Responses ?? [])
+        {
+            if (watch.RequireFreeSlot && !response.HasFreeUploadSlot)
+            {
+                continue;
+            }
+
+            var filtered = SearchFilters.Apply(filter, response);
+
+            var files = filtered.Files.AsEnumerable();
+
+            if (watch.IncludeLocked)
+            {
+                files = files.Concat(filtered.LockedFiles);
+            }
+
+            foreach (var file in files)
+            {
+                matches.Add(new Match
+                {
+                    Username = response.Username,
+                    HasFreeUploadSlot = response.HasFreeUploadSlot,
+                    UploadSpeed = response.UploadSpeed,
+                    QueueLength = response.QueueLength,
+                    Filename = file.Filename,
+                    Size = file.Size,
+                    BitRate = file.BitRate,
+                    Length = file.Length,
+                });
+            }
+        }
+
+        return matches;
+    }
 
     /// <summary>
     ///     Lists everything no watch should report.
@@ -136,12 +229,6 @@ public class WatchService
     {
         using var context = ContextFactory.CreateDbContext();
         await context.Ignores.Where(i => i.Id == id).ExecuteDeleteAsync();
-    }
-
-    private async Task<IgnoreSet> IgnoresAsync()
-    {
-        using var context = ContextFactory.CreateDbContext();
-        return new IgnoreSet(await context.Ignores.AsNoTracking().ToListAsync());
     }
 
     /// <summary>
@@ -207,26 +294,6 @@ public class WatchService
         using var context = ContextFactory.CreateDbContext();
 
         await DeleteRowsAsync(context, searchId);
-    }
-
-    /// <summary>
-    ///     Deletes every row a watch owns, in a context the caller already holds.
-    /// </summary>
-    /// <remarks>
-    ///     Static, and takes the context, so that deleting a *search* can take its watch with it without the search
-    ///     service having to depend on this one -- it depends on the search service already, and the two tables live
-    ///     in the same database. One place knows which tables a watch owns, which is what stops the next one added
-    ///     from being cleaned up in one path and left behind in the other.
-    /// </remarks>
-    /// <param name="context">The database context to delete through.</param>
-    /// <param name="searchId">The id of the search the watch is on.</param>
-    /// <returns>The operation context.</returns>
-    public static async Task DeleteRowsAsync(SearchDbContext context, Guid searchId)
-    {
-        await context.Watches.Where(w => w.SearchId == searchId).ExecuteDeleteAsync();
-        await context.WatchFiles.Where(f => f.SearchId == searchId).ExecuteDeleteAsync();
-        await context.WatchRuns.Where(r => r.SearchId == searchId).ExecuteDeleteAsync();
-        await context.WatchNotifications.Where(n => n.SearchId == searchId).ExecuteDeleteAsync();
     }
 
     /// <summary>
@@ -475,50 +542,10 @@ public class WatchService
         return run;
     }
 
-    /// <summary>
-    ///     Returns the files of <paramref name="search"/> that <paramref name="watch"/> cares about.
-    /// </summary>
-    /// <param name="watch">The watch whose criteria to apply.</param>
-    /// <param name="search">The search whose responses to read.</param>
-    /// <returns>The matching files.</returns>
-    public static List<Match> Matches(Watch watch, Search search)
+    private async Task<IgnoreSet> IgnoresAsync()
     {
-        var filter = SearchFilters.Parse(watch.Filter);
-        var matches = new List<Match>();
-
-        foreach (var response in search.Responses ?? [])
-        {
-            if (watch.RequireFreeSlot && !response.HasFreeUploadSlot)
-            {
-                continue;
-            }
-
-            var filtered = SearchFilters.Apply(filter, response);
-
-            var files = filtered.Files.AsEnumerable();
-
-            if (watch.IncludeLocked)
-            {
-                files = files.Concat(filtered.LockedFiles);
-            }
-
-            foreach (var file in files)
-            {
-                matches.Add(new Match
-                {
-                    Username = response.Username,
-                    HasFreeUploadSlot = response.HasFreeUploadSlot,
-                    UploadSpeed = response.UploadSpeed,
-                    QueueLength = response.QueueLength,
-                    Filename = file.Filename,
-                    Size = file.Size,
-                    BitRate = file.BitRate,
-                    Length = file.Length,
-                });
-            }
-        }
-
-        return matches;
+        using var context = ContextFactory.CreateDbContext();
+        return new IgnoreSet(await context.Ignores.AsNoTracking().ToListAsync());
     }
 
     private async Task<Search> AwaitCompletionAsync(Guid searchId)
@@ -584,32 +611,6 @@ public class WatchService
 
         return added;
     }
-
-    /// <summary>
-    ///     The most files a notification lists, and the most it records.
-    /// </summary>
-    /// <remarks>
-    ///     A broad search finds hundreds of files it has never reported on every run, and not because anything new
-    ///     appeared: the network answers a search with whichever peers happen to reply, and the set differs every
-    ///     time. Measured on a popular query, two runs a minute apart returned 252 and 250 responses with 1471 files
-    ///     between them that the first run had not seen. A mail listing all of them is unreadable and a record of all
-    ///     of them is a third of a megabyte per run, so both are capped and the true count is kept alongside.
-    /// </remarks>
-    private const int MaximumFilesListed = 50;
-    private const int MaximumFilesRecorded = 200;
-
-    /// <summary>
-    ///     How the recorded file list is written.
-    /// </summary>
-    /// <remarks>
-    ///     camelCase, because this is read by the web client, and everything else this application sends it is
-    ///     camelCase. Written with the serializer's defaults it was PascalCase, so every field of every row read as
-    ///     undefined -- a size of "NaN undefined" beside two empty columns.
-    /// </remarks>
-    private static readonly JsonSerializerOptions RecordedFileOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    };
 
     /// <summary>
     ///     Queues the chosen files for download, and returns how many were accepted.

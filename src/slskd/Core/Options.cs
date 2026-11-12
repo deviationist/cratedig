@@ -1364,6 +1364,12 @@ namespace slskd
                 /// </summary>
                 public bool UsesProvider => EffectiveSource == "provider" && Provider.Configured;
 
+                /// <summary>
+                ///     Gets the external compare provider, used when the source is <c>provider</c>.
+                /// </summary>
+                [Validate]
+                public CompareProviderOptions Provider { get; init; } = new CompareProviderOptions();
+
                 public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
                 {
                     if (Source is not null && Source.ToLowerInvariant() is not ("off" or "builtin" or "provider"))
@@ -1376,12 +1382,6 @@ namespace slskd
                         yield return new ValidationResult($"The {nameof(Source)} is provider, but no provider URL is set");
                     }
                 }
-
-                /// <summary>
-                ///     Gets the external compare provider, used when the source is <c>provider</c>.
-                /// </summary>
-                [Validate]
-                public CompareProviderOptions Provider { get; init; } = new CompareProviderOptions();
             }
 
             /// <summary>

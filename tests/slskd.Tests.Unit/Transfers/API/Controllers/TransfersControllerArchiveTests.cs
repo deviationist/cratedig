@@ -14,7 +14,7 @@ namespace slskd.Tests.Unit.Transfers.API.Controllers
     using Microsoft.AspNetCore.Mvc;
     using Microsoft.Extensions.Options;
     using Microsoft.EntityFrameworkCore;
-using Moq;
+    using Moq;
     using slskd.Files;
     using slskd.Transfers;
     using slskd.Transfers.API;

@@ -74,35 +74,6 @@ public class BuiltinCompare
     private IMediaTool MediaTool { get; }
     private ILogger Log { get; } = Serilog.Log.ForContext<BuiltinCompare>();
 
-
-    /// <summary>
-    ///     Compares <paramref name="files"/>.
-    /// </summary>
-    /// <param name="files">The files, in the order the document's indices follow.</param>
-    /// <param name="cancellationToken">A token to cancel the comparison.</param>
-    /// <returns>The comparison, in the contract's shape.</returns>
-    public async Task<JsonElement> CompareAsync(IReadOnlyList<FileInfo> files, CancellationToken cancellationToken = default)
-    {
-        var compared = new List<ComparedFile>();
-
-        // a file that cannot be read is reported and left out of the pairs rather than failing the lot: one broken
-        // download in a search's worth of copies is the ordinary case
-        foreach (var file in files)
-        {
-            try
-            {
-                compared.Add(new ComparedFile(await FeaturesAsync(file, cancellationToken)));
-            }
-            catch (Exception ex) when (ex is MediaToolException or InvalidOperationException or IOException or UnauthorizedAccessException)
-            {
-                Log.Debug("Cannot compare {File}: {Message}", file.Name, ex.Message);
-                compared.Add(new ComparedFile(null));
-            }
-        }
-
-        return Compare(compared);
-    }
-
     /// <summary>
     ///     Scores every pair of readable files and groups those that are one track, into the document.
     /// </summary>
@@ -152,6 +123,34 @@ public class BuiltinCompare
             .ToList();
 
         return CompareDocument.Build(files, pairs, groups);
+    }
+
+    /// <summary>
+    ///     Compares <paramref name="files"/>.
+    /// </summary>
+    /// <param name="files">The files, in the order the document's indices follow.</param>
+    /// <param name="cancellationToken">A token to cancel the comparison.</param>
+    /// <returns>The comparison, in the contract's shape.</returns>
+    public async Task<JsonElement> CompareAsync(IReadOnlyList<FileInfo> files, CancellationToken cancellationToken = default)
+    {
+        var compared = new List<ComparedFile>();
+
+        // a file that cannot be read is reported and left out of the pairs rather than failing the lot: one broken
+        // download in a search's worth of copies is the ordinary case
+        foreach (var file in files)
+        {
+            try
+            {
+                compared.Add(new ComparedFile(await FeaturesAsync(file, cancellationToken)));
+            }
+            catch (Exception ex) when (ex is MediaToolException or InvalidOperationException or IOException or UnauthorizedAccessException)
+            {
+                Log.Debug("Cannot compare {File}: {Message}", file.Name, ex.Message);
+                compared.Add(new ComparedFile(null));
+            }
+        }
+
+        return Compare(compared);
     }
 
     private async Task<Features> FeaturesAsync(FileInfo file, CancellationToken cancellationToken)

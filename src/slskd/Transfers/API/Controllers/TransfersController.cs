@@ -40,8 +40,8 @@ namespace slskd.Transfers.API
 {
     using System;
     using System.Collections.Generic;
-    using System.IO;
     using System.ComponentModel.DataAnnotations;
+    using System.IO;
     using System.IO.Compression;
     using System.Linq;
     using System.Threading;
@@ -136,12 +136,11 @@ namespace slskd.Transfers.API
         /// <param name="username">The username of the download source.</param>
         /// <param name="id">The id of the download.</param>
         /// <param name="remove">A value indicating whether the tracked download should be removed after cancellation.</param>
-        /// <param name="deleteFile">A value indicating whether the downloaded file should also be deleted from disk.</param>
         /// <returns></returns>
         /// <remarks>
-        ///     Removing a download removes the record of it, and has never touched the file on disk. Passing
-        ///     <paramref name="deleteFile"/> deletes the file the download produced as well, and requires the
-        ///     transfers.download.delete_file_on_removal option to be enabled.
+        ///     Removing a download removes the record of it, and has never touched the file on disk. With the
+        ///     transfers.download.delete_file_on_removal option enabled, <paramref name="remove"/> deletes the file the
+        ///     download produced as well.
         ///
         ///     Only a file this application knows it wrote is deleted, at the path recorded for the transfer:
         ///     the finished file if the download completed, or the partial left in the incomplete directory if
@@ -239,171 +238,6 @@ namespace slskd.Transfers.API
             {
                 return NotFound();
             }
-        }
-
-        /// <summary>
-        ///     Waits for the download matching <paramref name="id"/> to reach a terminal state.
-        /// </summary>
-        /// <remarks>
-        ///     Returns the transfer as it stands when it gets there, or null if it did not within the
-        ///     timeout -- in which case the caller carries on with what it already had and reports the
-        ///     outcome honestly rather than pretending the wait succeeded.
-        /// </remarks>
-        private async Task<slskd.Transfers.Transfer> WaitForTerminalStateAsync(Guid id, int timeoutMilliseconds = 5000)
-        {
-            var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMilliseconds);
-
-            while (DateTime.UtcNow < deadline)
-            {
-                await Task.Delay(100);
-
-                var transfer = Transfers.Downloads.Find(t => t.Id == id);
-
-                if (transfer is null || TransferStateCategories.Completed.Contains(transfer.State))
-                {
-                    return transfer;
-                }
-            }
-
-            Log.Warning("Download {Id} did not reach a terminal state within {Timeout}ms of being cancelled", id, timeoutMilliseconds);
-            return null;
-        }
-
-        /// <summary>
-        ///     Deletes the file produced by the specified <paramref name="transfer"/>, if it produced one.
-        /// </summary>
-        /// <remarks>
-        ///     Delegates to the file service rather than deleting directly, so that this inherits the same
-        ///     guards as every other deletion: absolute paths only, no traversal segments, and nothing outside
-        ///     the configured downloads and incomplete directories. A recorded path that no longer satisfies
-        ///     those -- the downloads directory having been reconfigured since, for instance -- is refused
-        ///     here exactly as it would be there.
-        /// </remarks>
-        private async Task<RemovalResult> DeleteDownloadedFileAsync(slskd.Transfers.Transfer transfer)
-        {
-            var filename = transfer?.LocalFilename;
-
-            if (string.IsNullOrWhiteSpace(filename))
-            {
-                // two different things hide behind a missing path, and the byte count tells them apart.
-                //
-                // the path is recorded immediately before the download begins, so a transfer that has
-                // no path *and* transferred nothing never reached that point: queued, rejected, timed
-                // out, or cancelled while waiting. nothing was ever written anywhere, which is the end
-                // state the caller asked for -- so it is a success, the same as a file already gone.
-                if (transfer is not null
-                    && transfer.BytesTransferred == 0
-                    && !TransferStateCategories.Successful.Contains(transfer.State))
-                {
-                    Log.Debug("Download {Id} never started; there is no file to delete", transfer.Id);
-                    return new RemovalResult { Deleted = true, Filename = null, Error = null };
-                }
-
-                // bytes were written somewhere this instance did not record -- a download from before
-                // it began recording. its file may well be sitting in the downloads directory under a
-                // name nobody wrote down, so claiming the end state here would be claiming something
-                // never checked.
-                Log.Debug("No local file is recorded for download {Id}; nothing to delete", transfer?.Id);
-                return new RemovalResult { Deleted = false, Filename = null, Error = null };
-            }
-
-            try
-            {
-                // a file that is already gone is a success, not a failure: what was asked for is that
-                // it not be there, and it is not. `File.Delete` not throwing over an empty path is the
-                // same rule, and this reports it the same way. failure is reserved for a file that is
-                // there, should go, and will not.
-                // the player's waveform and transcodes of it, first: named by the file's identity, which can only
-                // be worked out while the file is there -- and resolved the way the player resolves it, links followed
-                var playable = Player is null
-                    ? null
-                    : slskd.Player.PlayableFile.Resolve(transfer, OptionsSnapshot.Value.Directories.Downloads, Files, out _);
-
-                if (playable is not null)
-                {
-                    Player.Forget(playable);
-                }
-
-                var results = await Files.DeleteFilesAsync(filename);
-
-                return await results[filename].Match(
-                    async success => new RemovalResult
-                    {
-                        Deleted = true,
-                        Filename = filename,
-                        Error = null,
-                        PrunedDirectories = await PruneEmptyDirectoriesAsync(filename),
-                    },
-                    failure => Task.FromResult(new RemovalResult { Deleted = false, Filename = filename, Error = failure.Message }));
-            }
-            catch (Exception ex)
-            {
-                Log.Warning(ex, "Failed to delete the file for download {Id}: {Message}", transfer.Id, ex.Message);
-                return new RemovalResult { Deleted = false, Filename = filename, Error = ex.Message };
-            }
-        }
-
-        /// <summary>
-        ///     Removes the directories the deleted file leaves empty behind it, innermost first.
-        /// </summary>
-        /// <remarks>
-        ///     A download arrives inside the folder the peer named, sometimes nested several deep, and
-        ///     deleting the last file out of that structure leaves the structure. Walking up rather than
-        ///     deleting one level is the difference between cleaning up and moving the litter one folder
-        ///     outwards.
-        ///
-        ///     It stops at the first directory that still holds something, and at the roots -- which is
-        ///     not this method's rule to enforce: `DeleteDirectoriesAsync` refuses the Downloads and
-        ///     Incomplete roots itself ("Deletion of application-controlled directory roots is not
-        ///     supported"), along with anything outside them, so the walk ends when the shared guard says
-        ///     no. A boundary checked in one place cannot drift from a boundary checked in two.
-        ///
-        ///     Empty means empty: `EnumerateFileSystemEntries` counts everything, so a folder holding a
-        ///     cover image or a peer's notelist is left alone. That matches what slskd already does after
-        ///     moving a completed file out of the incomplete tree.
-        /// </remarks>
-        /// <returns>The number of directories removed.</returns>
-        private async Task<int> PruneEmptyDirectoriesAsync(string filename)
-        {
-            var pruned = 0;
-            var directory = Path.GetDirectoryName(filename);
-
-            while (!string.IsNullOrWhiteSpace(directory))
-            {
-                try
-                {
-                    if (!System.IO.Directory.Exists(directory) || System.IO.Directory.EnumerateFileSystemEntries(directory).Any())
-                    {
-                        break;
-                    }
-
-                    var results = await Files.DeleteDirectoriesAsync(directory);
-
-                    if (results[directory].TryPickT1(out var failure, out _))
-                    {
-                        Log.Debug("Stopped pruning at {Directory}: {Message}", directory, failure.Message);
-                        break;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    // the roots land here, which is how the walk knows where to stop -- and so does
-                    // anything the filesystem throws while being asked what is still in a folder.
-                    //
-                    // this method must not throw, and that is not tidiness: it runs *after* the file
-                    // is gone, so an exception escaping here would be caught by the caller and
-                    // reported as a deletion that failed. the file would be deleted and the answer
-                    // would say it was not.
-                    Log.Debug("Stopped pruning at {Directory}: {Message}", directory, ex.Message);
-                    break;
-                }
-
-                Log.Information("Removed empty directory {Directory}", directory);
-                pruned++;
-                directory = Path.GetDirectoryName(directory);
-            }
-
-            return pruned;
         }
 
         /// <summary>
@@ -1381,6 +1215,171 @@ namespace slskd.Transfers.API
             => (download?.Filename ?? string.Empty)
                 .Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .LastOrDefault() ?? id.ToString();
+
+        /// <summary>
+        ///     Waits for the download matching <paramref name="id"/> to reach a terminal state.
+        /// </summary>
+        /// <remarks>
+        ///     Returns the transfer as it stands when it gets there, or null if it did not within the
+        ///     timeout -- in which case the caller carries on with what it already had and reports the
+        ///     outcome honestly rather than pretending the wait succeeded.
+        /// </remarks>
+        private async Task<slskd.Transfers.Transfer> WaitForTerminalStateAsync(Guid id, int timeoutMilliseconds = 5000)
+        {
+            var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMilliseconds);
+
+            while (DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(100);
+
+                var transfer = Transfers.Downloads.Find(t => t.Id == id);
+
+                if (transfer is null || TransferStateCategories.Completed.Contains(transfer.State))
+                {
+                    return transfer;
+                }
+            }
+
+            Log.Warning("Download {Id} did not reach a terminal state within {Timeout}ms of being cancelled", id, timeoutMilliseconds);
+            return null;
+        }
+
+        /// <summary>
+        ///     Deletes the file produced by the specified <paramref name="transfer"/>, if it produced one.
+        /// </summary>
+        /// <remarks>
+        ///     Delegates to the file service rather than deleting directly, so that this inherits the same
+        ///     guards as every other deletion: absolute paths only, no traversal segments, and nothing outside
+        ///     the configured downloads and incomplete directories. A recorded path that no longer satisfies
+        ///     those -- the downloads directory having been reconfigured since, for instance -- is refused
+        ///     here exactly as it would be there.
+        /// </remarks>
+        private async Task<RemovalResult> DeleteDownloadedFileAsync(slskd.Transfers.Transfer transfer)
+        {
+            var filename = transfer?.LocalFilename;
+
+            if (string.IsNullOrWhiteSpace(filename))
+            {
+                // two different things hide behind a missing path, and the byte count tells them apart.
+                //
+                // the path is recorded immediately before the download begins, so a transfer that has
+                // no path *and* transferred nothing never reached that point: queued, rejected, timed
+                // out, or cancelled while waiting. nothing was ever written anywhere, which is the end
+                // state the caller asked for -- so it is a success, the same as a file already gone.
+                if (transfer is not null
+                    && transfer.BytesTransferred == 0
+                    && !TransferStateCategories.Successful.Contains(transfer.State))
+                {
+                    Log.Debug("Download {Id} never started; there is no file to delete", transfer.Id);
+                    return new RemovalResult { Deleted = true, Filename = null, Error = null };
+                }
+
+                // bytes were written somewhere this instance did not record -- a download from before
+                // it began recording. its file may well be sitting in the downloads directory under a
+                // name nobody wrote down, so claiming the end state here would be claiming something
+                // never checked.
+                Log.Debug("No local file is recorded for download {Id}; nothing to delete", transfer?.Id);
+                return new RemovalResult { Deleted = false, Filename = null, Error = null };
+            }
+
+            try
+            {
+                // a file that is already gone is a success, not a failure: what was asked for is that
+                // it not be there, and it is not. `File.Delete` not throwing over an empty path is the
+                // same rule, and this reports it the same way. failure is reserved for a file that is
+                // there, should go, and will not.
+                // the player's waveform and transcodes of it, first: named by the file's identity, which can only
+                // be worked out while the file is there -- and resolved the way the player resolves it, links followed
+                var playable = Player is null
+                    ? null
+                    : slskd.Player.PlayableFile.Resolve(transfer, OptionsSnapshot.Value.Directories.Downloads, Files, out _);
+
+                if (playable is not null)
+                {
+                    Player.Forget(playable);
+                }
+
+                var results = await Files.DeleteFilesAsync(filename);
+
+                return await results[filename].Match(
+                    async success => new RemovalResult
+                    {
+                        Deleted = true,
+                        Filename = filename,
+                        Error = null,
+                        PrunedDirectories = await PruneEmptyDirectoriesAsync(filename),
+                    },
+                    failure => Task.FromResult(new RemovalResult { Deleted = false, Filename = filename, Error = failure.Message }));
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Failed to delete the file for download {Id}: {Message}", transfer.Id, ex.Message);
+                return new RemovalResult { Deleted = false, Filename = filename, Error = ex.Message };
+            }
+        }
+
+        /// <summary>
+        ///     Removes the directories the deleted file leaves empty behind it, innermost first.
+        /// </summary>
+        /// <remarks>
+        ///     A download arrives inside the folder the peer named, sometimes nested several deep, and
+        ///     deleting the last file out of that structure leaves the structure. Walking up rather than
+        ///     deleting one level is the difference between cleaning up and moving the litter one folder
+        ///     outwards.
+        ///
+        ///     It stops at the first directory that still holds something, and at the roots -- which is
+        ///     not this method's rule to enforce: `DeleteDirectoriesAsync` refuses the Downloads and
+        ///     Incomplete roots itself ("Deletion of application-controlled directory roots is not
+        ///     supported"), along with anything outside them, so the walk ends when the shared guard says
+        ///     no. A boundary checked in one place cannot drift from a boundary checked in two.
+        ///
+        ///     Empty means empty: `EnumerateFileSystemEntries` counts everything, so a folder holding a
+        ///     cover image or a peer's notelist is left alone. That matches what slskd already does after
+        ///     moving a completed file out of the incomplete tree.
+        /// </remarks>
+        /// <returns>The number of directories removed.</returns>
+        private async Task<int> PruneEmptyDirectoriesAsync(string filename)
+        {
+            var pruned = 0;
+            var directory = Path.GetDirectoryName(filename);
+
+            while (!string.IsNullOrWhiteSpace(directory))
+            {
+                try
+                {
+                    if (!System.IO.Directory.Exists(directory) || System.IO.Directory.EnumerateFileSystemEntries(directory).Any())
+                    {
+                        break;
+                    }
+
+                    var results = await Files.DeleteDirectoriesAsync(directory);
+
+                    if (results[directory].TryPickT1(out var failure, out _))
+                    {
+                        Log.Debug("Stopped pruning at {Directory}: {Message}", directory, failure.Message);
+                        break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // the roots land here, which is how the walk knows where to stop -- and so does
+                    // anything the filesystem throws while being asked what is still in a folder.
+                    //
+                    // this method must not throw, and that is not tidiness: it runs *after* the file
+                    // is gone, so an exception escaping here would be caught by the caller and
+                    // reported as a deletion that failed. the file would be deleted and the answer
+                    // would say it was not.
+                    Log.Debug("Stopped pruning at {Directory}: {Message}", directory, ex.Message);
+                    break;
+                }
+
+                Log.Information("Removed empty directory {Directory}", directory);
+                pruned++;
+                directory = Path.GetDirectoryName(directory);
+            }
+
+            return pruned;
+        }
 
         /// <summary>
         ///     Opens the file produced by the specified <paramref name="download"/>, or says why it can't be opened.

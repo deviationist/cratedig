@@ -358,30 +358,6 @@ public class PlayerService
         => name.Length == 32 + suffix.Length && name.EndsWith(suffix, StringComparison.Ordinal)
             && name[..32].All(Uri.IsHexDigit);
 
-    private void ExpireNow()
-    {
-        var days = OptionsMonitor.CurrentValue.Player.Cache.Ttl;
-
-        if (days <= 0 || !Directory.Exists(CacheDirectory))
-        {
-            return;
-        }
-
-        try
-        {
-            var dropped = Expire(CacheDirectory, TimeSpan.FromDays(days), DateTime.UtcNow);
-
-            if (dropped > 0)
-            {
-                Log.Information("Dropped {Count} transcodes unused for {Days} days", dropped, days);
-            }
-        }
-        catch (Exception ex)
-        {
-            Log.Warning("Could not expire the player cache: {Message}", ex.Message);
-        }
-    }
-
     private static T ReadJson<T>(string path)
         where T : class
     {
@@ -443,6 +419,30 @@ public class PlayerService
         }
         catch (IOException)
         {
+        }
+    }
+
+    private void ExpireNow()
+    {
+        var days = OptionsMonitor.CurrentValue.Player.Cache.Ttl;
+
+        if (days <= 0 || !Directory.Exists(CacheDirectory))
+        {
+            return;
+        }
+
+        try
+        {
+            var dropped = Expire(CacheDirectory, TimeSpan.FromDays(days), DateTime.UtcNow);
+
+            if (dropped > 0)
+            {
+                Log.Information("Dropped {Count} transcodes unused for {Days} days", dropped, days);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warning("Could not expire the player cache: {Message}", ex.Message);
         }
     }
 

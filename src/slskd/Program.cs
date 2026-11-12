@@ -856,7 +856,7 @@ namespace slskd
             services.AddSingleton<slskd.Player.StreamTickets>(_ => new slskd.Player.StreamTickets());
             services.AddSingleton<slskd.Player.Builtin.BuiltinAnalyser>();
             services.AddSingleton<slskd.Player.AnalysisStore>();
-services.AddSingleton<slskd.Player.AnalysisProvider>();
+            services.AddSingleton<slskd.Player.AnalysisProvider>();
             services.AddSingleton<slskd.Transfers.Compare.Builtin.BuiltinCompare>();
             services.AddSingleton<slskd.Transfers.Compare.CompareProvider>();
             services.AddSingleton<slskd.Search.SearchExistence>();

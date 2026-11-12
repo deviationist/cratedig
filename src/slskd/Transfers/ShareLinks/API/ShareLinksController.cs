@@ -589,7 +589,7 @@ public class ShareLinksController : ControllerBase
     {
         recipients = [.. (given ?? [])
             .SelectMany(r => (r ?? string.Empty).Split([',', ';', ' ', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries))
-            .Distinct(StringComparer.OrdinalIgnoreCase)];
+            .Distinct(StringComparer.OrdinalIgnoreCase),];
 
         problem = null;
 

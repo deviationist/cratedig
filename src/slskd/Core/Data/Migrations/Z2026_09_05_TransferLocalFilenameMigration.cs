@@ -30,7 +30,6 @@
 //   ╰───────────────────────────────────────────╶──── ─ ─── ─  ── ──┈  ┈
 // </copyright>
 
-
 namespace slskd.Migrations;
 
 using System;

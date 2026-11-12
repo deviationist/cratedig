@@ -141,6 +141,8 @@ public record AnalysisVerdict(string Level, string Headline);
 /// </remarks>
 public class AnalysisStore
 {
+    private static readonly TimeSpan SweepEvery = TimeSpan.FromDays(1);
+
     /// <summary>
     ///     Initializes a new instance of the <see cref="AnalysisStore"/> class.
     /// </summary>
@@ -178,24 +180,6 @@ public class AnalysisStore
         });
     }
 
-    private IDbContextFactory<TransfersDbContext> ContextFactory { get; }
-    private Microsoft.Extensions.Options.IOptionsMonitor<Options> OptionsMonitor { get; }
-
-    // the version answers are made under now, when slskd knows it without asking: its own analyser's
-    private string Expected => OptionsMonitor?.CurrentValue.Player.Analysis.UsesBuiltin == true ? Builtin.BuiltinAnalyser.Version : null;
-    private ILogger Log { get; } = Serilog.Log.ForContext<AnalysisStore>();
-    private object Lock { get; } = new();
-
-    private static readonly TimeSpan SweepEvery = TimeSpan.FromDays(1);
-
-    // whether the first-use work -- the sweep, and dropping what another version made -- is done for the source now
-    private bool Prepared { get; set; }
-    private bool Swept { get; set; }
-    private DateTime LastSwept { get; set; } = DateTime.MinValue;
-
-    // the version answers were last seen made under
-    private string Version { get; set; }
-
     /// <summary>
     ///     Gets the number of downloads with an analysis stored.
     /// </summary>
@@ -210,6 +194,22 @@ public class AnalysisStore
             }
         }
     }
+
+    private IDbContextFactory<TransfersDbContext> ContextFactory { get; }
+    private Microsoft.Extensions.Options.IOptionsMonitor<Options> OptionsMonitor { get; }
+
+    // the version answers are made under now, when slskd knows it without asking: its own analyser's
+    private string Expected => OptionsMonitor?.CurrentValue.Player.Analysis.UsesBuiltin == true ? Builtin.BuiltinAnalyser.Version : null;
+    private ILogger Log { get; } = Serilog.Log.ForContext<AnalysisStore>();
+    private object Lock { get; } = new();
+
+    // whether the first-use work -- the sweep, and dropping what another version made -- is done for the source now
+    private bool Prepared { get; set; }
+    private bool Swept { get; set; }
+    private DateTime LastSwept { get; set; } = DateTime.MinValue;
+
+    // the version answers were last seen made under
+    private string Version { get; set; }
 
     /// <summary>
     ///     The verdict of each of <paramref name="downloads"/> that has one stored.
@@ -369,6 +369,19 @@ public class AnalysisStore
         }
     }
 
+    private static string StringAt(JsonElement element, params string[] path)
+    {
+        foreach (var name in path)
+        {
+            if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(name, out element))
+            {
+                return null;
+            }
+        }
+
+        return element.ValueKind == JsonValueKind.String ? element.GetString() : null;
+    }
+
     // deletes every analysis not made under `version`, and the downloads' links to them
     private void DropOtherVersions(TransfersDbContext context, string version)
     {
@@ -383,19 +396,6 @@ public class AnalysisStore
         context.Analyses.Where(a => stale.Contains(a.Id)).ExecuteDelete();
 
         Log.Information("Analyses are now made by {Version}; deleted {Count} made by another", version, stale.Count);
-    }
-
-    private static string StringAt(JsonElement element, params string[] path)
-    {
-        foreach (var name in path)
-        {
-            if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(name, out element))
-            {
-                return null;
-            }
-        }
-
-        return element.ValueKind == JsonValueKind.String ? element.GetString() : null;
     }
 
     // a context, with the first-use work done: called under the lock
