@@ -34,6 +34,7 @@ namespace slskd.Tests.Unit.Transfers.ShareLinks;
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -58,6 +59,101 @@ public class ShareLinkPagePolicyTests
     public void A_Page_Without_A_Script_Allows_None()
     {
         Assert.Contains("script-src 'none';", ShareLinkPagePolicy.For("<p>nothing</p>"));
+    }
+
+    [Fact]
+    public void Hashes_Inline_Blocks_With_Attributes_But_Not_Ones_With_A_Src()
+    {
+        var policy = ShareLinkPagePolicy.For("<script type=\"module\">a()</script><script defer src=\"https://x.example/s.js\">b()</script><style media=\"print\">p{}</style>");
+
+        Assert.Contains($"script-src {Hash("a()")};", policy);
+        Assert.DoesNotContain(Hash("b()"), policy);
+        Assert.Contains($"style-src {Hash("p{}")};", policy);
+    }
+
+    [Fact]
+    public void Adds_The_Allowed_Sources_To_Their_Directives()
+    {
+        var allow = new Options.TransfersOptions.ShareLinksOptions.ShareLinkPageSourcesOptions
+        {
+            Script = ["https://stats.example.com"],
+            Connect = ["https://stats.example.com"],
+            Img = ["https://pixel.example.com"],
+            Font = ["https://fonts.example.com"],
+        };
+
+        var policy = ShareLinkPagePolicy.For("<script>go()</script>", allow);
+
+        Assert.Contains($"script-src {Hash("go()")} https://stats.example.com;", policy);
+        Assert.Contains("connect-src 'self' https://stats.example.com;", policy);
+        Assert.Contains("img-src data: https://pixel.example.com;", policy);
+        Assert.Contains("font-src https://fonts.example.com;", policy);
+        Assert.Contains("style-src 'none';", policy);
+    }
+
+    [Fact]
+    public void Without_Additions_The_Policy_Allows_Nothing_Outside()
+    {
+        var policy = ShareLinkPagePolicy.For("<p>nothing</p>");
+
+        Assert.Contains("font-src 'none';", policy);
+        Assert.Contains("connect-src 'self';", policy);
+        Assert.Contains("img-src data:;", policy);
+    }
+
+    [Theory]
+    [InlineData("https://stats.example.com")]
+    [InlineData("https://*.example.com")]
+    [InlineData("https://stats.example.com:8443/js/")]
+    [InlineData("wss://live.example.com")]
+    public void Takes_Named_Hosts_Over_Https(string source)
+    {
+        Assert.True(ShareLinkPagePolicy.IsSource(source));
+    }
+
+    [Theory]
+    [InlineData("*")]
+    [InlineData("https://*")]
+    [InlineData("https:")]
+    [InlineData("data:")]
+    [InlineData("http://stats.example.com")]
+    [InlineData("stats.example.com")]
+    [InlineData("https://localhost")]
+    [InlineData("javascript:alert(1)")]
+    [InlineData("'unsafe-inline'")]
+    [InlineData("'self'")]
+    [InlineData("'sha256-abc='")]
+    [InlineData("https://a.example; script-src *")]
+    [InlineData("https://a.example https://b.example")]
+    [InlineData("https://a.example,https://b.example")]
+    [InlineData("https://a.example\nX")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void Refuses_Anything_But_One_Named_Host_Over_Https(string source)
+    {
+        Assert.False(ShareLinkPagePolicy.IsSource(source));
+    }
+
+    [Fact]
+    public void Leaves_Out_A_Refused_Source_Even_If_Validation_Was_Skipped()
+    {
+        var allow = new Options.TransfersOptions.ShareLinksOptions.ShareLinkPageSourcesOptions { Script = ["'unsafe-inline'", "https://ok.example"] };
+
+        var policy = ShareLinkPagePolicy.For("<p></p>", allow);
+
+        Assert.Contains("script-src https://ok.example;", policy);
+        Assert.DoesNotContain("unsafe-inline", policy);
+    }
+
+    [Fact]
+    public void Validation_Names_A_Refused_Source()
+    {
+        var allow = new Options.TransfersOptions.ShareLinksOptions.ShareLinkPageSourcesOptions { Connect = ["'unsafe-eval'"] };
+
+        var results = allow.Validate(new System.ComponentModel.DataAnnotations.ValidationContext(allow)).ToList();
+
+        Assert.Single(results);
+        Assert.Contains("Connect", results[0].ErrorMessage);
     }
 
     [Fact]

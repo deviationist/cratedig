@@ -90,6 +90,14 @@
 #     base_url: ~ # e.g. https://share.example.com; blank uses the UI's address
 #     default_days: 7
 #     max_days: 90
+#     page:
+#       head: ~ # markup added at the end of the link page's head, e.g. an analytics script
+#       allow: # hosts that markup loads from, by kind; each one host over https
+#         script: [] # e.g. https://stats.example.com
+#         style: []
+#         connect: []
+#         img: []
+#         font: []
 #   compare:
 #     enabled: false
 #     provider:

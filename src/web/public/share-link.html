@@ -8,6 +8,9 @@
     /api/v0/l/{token}/..., so it links to nothing else: no stylesheet, no script,
     no icon file. Publishing share links under a public name needs those two
     prefixes forwarded, and only them.
+
+    The operator may add markup at the end of the head (transfers.share_links.page),
+    which the server inserts before working out the page's policy.
 -->
 <html lang="en">
     <head>

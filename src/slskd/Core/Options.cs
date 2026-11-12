@@ -1243,6 +1243,97 @@ namespace slskd
                 [Description("the most days a share link may last")]
                 [Range(1, 3650)]
                 public int MaxDays { get; init; } = 90;
+
+                /// <summary>
+                ///     Gets additions to the page a link opens.
+                /// </summary>
+                [Validate]
+                public ShareLinkPageOptions Page { get; init; } = new ShareLinkPageOptions();
+
+                /// <summary>
+                ///     Additions to the page a share link opens: markup for its head -- an analytics script, a
+                ///     stylesheet, a meta tag -- and the outside addresses that markup needs to load from.
+                /// </summary>
+                /// <remarks>
+                ///     The page is served under a Content-Security-Policy that allows nothing but itself, so markup
+                ///     added here that loads anything from elsewhere does nothing until that address is allowed for its
+                ///     kind under <see cref="Allow"/>. Inline script and style blocks need no allowing: the policy is
+                ///     made from the page as it goes out, these additions included.
+                /// </remarks>
+                public class ShareLinkPageOptions
+                {
+                    /// <summary>
+                    ///     Gets markup inserted at the end of the page's head.
+                    /// </summary>
+                    [Argument(default, "share-links-page-head")]
+                    [EnvironmentVariable("SHARE_LINKS_PAGE_HEAD")]
+                    [Description("markup inserted at the end of the share link page's head, e.g. an analytics script")]
+                    public string Head { get; init; }
+
+                    /// <summary>
+                    ///     Gets the outside addresses the page may load from, by kind.
+                    /// </summary>
+                    [Validate]
+                    public ShareLinkPageSourcesOptions Allow { get; init; } = new ShareLinkPageSourcesOptions();
+                }
+
+                /// <summary>
+                ///     Content-Security-Policy sources added to the share link page's policy, one list per directive.
+                /// </summary>
+                /// <remarks>
+                ///     Each entry names one host over https (or wss) -- <c>https://stats.example.com</c>, or
+                ///     <c>https://*.example.com</c> for its subdomains. Anything wider is refused: a bare <c>*</c>, a
+                ///     scheme alone, plain http, and quoted keywords such as <c>'unsafe-inline'</c>, since inline blocks
+                ///     are allowed by hash already.
+                /// </remarks>
+                public class ShareLinkPageSourcesOptions : IValidatableObject
+                {
+                    /// <summary>
+                    ///     Gets the sources scripts may be loaded from (<c>script-src</c>).
+                    /// </summary>
+                    public string[] Script { get; init; } = Array.Empty<string>();
+
+                    /// <summary>
+                    ///     Gets the sources stylesheets may be loaded from (<c>style-src</c>).
+                    /// </summary>
+                    public string[] Style { get; init; } = Array.Empty<string>();
+
+                    /// <summary>
+                    ///     Gets the sources the page may send requests to (<c>connect-src</c>): where an analytics
+                    ///     script reports to.
+                    /// </summary>
+                    public string[] Connect { get; init; } = Array.Empty<string>();
+
+                    /// <summary>
+                    ///     Gets the sources images may be loaded from (<c>img-src</c>): a tracking pixel, a logo.
+                    /// </summary>
+                    public string[] Img { get; init; } = Array.Empty<string>();
+
+                    /// <summary>
+                    ///     Gets the sources fonts may be loaded from (<c>font-src</c>).
+                    /// </summary>
+                    public string[] Font { get; init; } = Array.Empty<string>();
+
+                    /// <inheritdoc/>
+                    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+                    {
+                        var lists = new (string Name, string[] Sources)[]
+                        {
+                            (nameof(Script), Script), (nameof(Style), Style), (nameof(Connect), Connect), (nameof(Img), Img), (nameof(Font), Font),
+                        };
+
+                        foreach (var (name, sources) in lists)
+                        {
+                            foreach (var source in sources ?? [])
+                            {
+                                if (!slskd.Transfers.ShareLinks.ShareLinkPagePolicy.IsSource(source))
+                                {
+                                    yield return new ValidationResult($"The {name} field contains '{source}', which is not one host over https (e.g. https://stats.example.com)");
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             /// <summary>

@@ -216,8 +216,8 @@ Off, the button is not drawn.
 A finished download handed to someone without an account: a link to a page
 listing the files, each downloadable on its own and as one zip, that works
 until it expires. Configured under `transfers.share_links.*` -- `enabled`,
-`directory`, `base_url`, `default_days` and `max_days`. The link page is served
-at `/l/{token}`, outside the API's versioning.
+`directory`, `base_url`, `default_days`, `max_days` and `page`. The link page is
+served at `/l/{token}`, outside the API's versioning.
 
 | Branch | What it does | Upstream |
 |---|---|---|
@@ -226,6 +226,7 @@ at `/l/{token}`, outside the API's versioning.
 | `fix/archive-entry-names-windows-safe` | Zip entry names follow Windows' rules whatever the server runs, because an archive is unpacked by whoever downloads it. On Linux only `/` and NUL are invalid, so a peer's folder named `C:` arrived as the entry `C:/name.flac`, which a naive extractor on Windows reads as a drive. | Ours, though it applies to every archive this fork builds. |
 | `feature/share-link-recipient-pills`, `feature/share-link-recipient-suggestions`, `feature/recipients-keyboard-nav`, `feature/recipients-range-select`, `fix/recipients-input-polish`, `fix/paste-pill-and-dark-checkbox` | The recipients field works as a mail client's To field. An address becomes a pill when it is ended, and one that is not an address is marked red on its own. Addresses mailed before are suggested as one is typed, most recent first. The pills can be walked, selected as a range, copied, cut and edited from the keyboard, and a pasted address becomes its pill at once, display name and all. | Ours. |
 | `feature/share-link-longer-durations` | Two and three months as presets beside the shorter ones, in the dialog and in Extend; a preset above the server's `max_days` is not shown. | Ours. |
+| `feature/share-link-page-head` | Markup of the operator's own at the end of the link page's head (`page.head`), such as an analytics script, with the outside hosts it loads from added to the page's policy per directive (`page.allow`). The policy is still made from the page as served, so inline blocks among the additions are allowed by hash; an allowed source must name one host over https, never a wildcard, a bare scheme or a keyword. The docs warn that any added script can read the link's token from the address, and show a Plausible setup that sends a redacted one. | Ours. |
 | `fix/shared-page-dark-text` | The Shared page's sizes, expiries and mail log were black on near-black in the dark theme. | Ours. |
 
 ### Notifications

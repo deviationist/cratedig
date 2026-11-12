@@ -441,13 +441,17 @@ public class ShareLinksController : ControllerBase
             return NotFound();
         }
 
-        // read rather than served as a file, so that the policy is made from the very text that goes out
+        // read rather than served as a file, so that the policy is made from the very text that goes out -- the
+        // operator's additions included, so an inline block among them is allowed by hash like the page's own
         var html = await System.IO.File.ReadAllTextAsync(page);
+        var additions = OptionsSnapshot.Value.Transfers.ShareLinks.Page;
+
+        html = ShareLinkPage.WithHead(html, additions.Head);
 
         // the page is the same for every link -- it asks the API about the one in its address -- so a bad token gets
         // the page too, and the page says the link does not work. whether a token is good is told only by the API
         Response.Headers.CacheControl = "no-cache";
-        Response.Headers.ContentSecurityPolicy = ShareLinkPagePolicy.For(html);
+        Response.Headers.ContentSecurityPolicy = ShareLinkPagePolicy.For(html, additions.Allow);
         Response.Headers["Referrer-Policy"] = "no-referrer";
         Response.Headers["X-Robots-Tag"] = "noindex, nofollow";
 
