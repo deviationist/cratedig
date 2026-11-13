@@ -555,7 +555,18 @@ namespace slskd.Transfers.Downloads
                                     // state of slskd to diverge from the internal state of Soulseek.NET.
                                     // the transfer record is recorded as being cancelled when this happens and there's not
                                     // an easy/good way to stop it.
-                                    cts.Cancel();
+                                    // this callback runs on a timer thread, so an exception here is unhandled
+                                    // and terminates the process. the download may already have finished and
+                                    // disposed cts (see the TryRemove/Dispose when the transfer completes); in
+                                    // that case there is nothing left to cancel.
+                                    try
+                                    {
+                                        cts.Cancel();
+                                    }
+                                    catch (ObjectDisposedException)
+                                    {
+                                        Log.Debug("Download of {Filename} from {Username} had already completed when the enqueue time limit elapsed", transfer.Filename, username);
+                                    }
                                 });
 
                                 // satisfies conditions #1 and #2
