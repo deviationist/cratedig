@@ -340,6 +340,7 @@ const SearchDetail = ({
   hub,
   onCreate,
   onRemove,
+  onRerun,
   onSearchChanged,
   onStop,
   onWatchChanged,
@@ -488,14 +489,6 @@ const SearchDetail = ({
       }
     }, WATCHDOG_MS);
 
-    const unsubscribe = async () => {
-      try {
-        await hub.invoke('Unsubscribe', id);
-      } catch {
-        // the connection is gone, and the subscription with it
-      }
-    };
-
     hub.on('responses', apply);
     subscribe();
 
@@ -504,10 +497,31 @@ const SearchDetail = ({
       streamingRef.current = false;
       clearInterval(watchdog);
       hub.off('responses', apply);
-      unsubscribe();
     };
-    // started once per search; it follows the search's state through refs
+    // started once per run of the search -- a search run again in place keeps
+    // its id, and gets a new start time -- and it follows the search's state
+    // through refs
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hub, id, search.startedAt]);
+
+  // leaving the search ends the subscription. Kept apart from the run above
+  // so that a run starting again in place does not unsubscribe: the server
+  // may take the two calls in either order, and could end with no
+  // subscription at all
+  useEffect(() => {
+    if (!hub) {
+      return undefined;
+    }
+
+    return () => {
+      (async () => {
+        try {
+          await hub.invoke('Unsubscribe', id);
+        } catch {
+          // the connection is gone, and the subscription with it
+        }
+      })();
+    };
   }, [hub, id]);
 
   // the closing chunk says the search ended even when its update went missing
@@ -606,8 +620,17 @@ const SearchDetail = ({
     setDisplayCount(5);
   };
 
+  // Search Again: a new search, or this one run again in place, by option
+  const searchAgainInPlace = options?.searches?.searchAgain === 'rerun';
+
   const create = async ({ navigate, search: searchForCreate }) => {
     reset();
+
+    if (searchAgainInPlace) {
+      onRerun(search);
+      return;
+    }
+
     onCreate({ navigate, search: searchForCreate });
   };
 
@@ -679,6 +702,7 @@ const SearchDetail = ({
         onWatch={() => setWatching(true)}
         removing={removing}
         search={search}
+        searchAgainInPlace={searchAgainInPlace}
         stopping={stopping}
         watch={watch}
       />

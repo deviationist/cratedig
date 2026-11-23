@@ -1427,24 +1427,28 @@ throttling:
 
 # Search Results
 
-How the web UI presents a search's results when it is opened. Presentation only: neither option changes what is searched for or what the peers send back.
+How the web UI presents a search's results when it is opened, and what its Search Again does. The first two are presentation only: they change neither what is searched for nor what the peers send back.
 
 `default_sort` is the order the results **table** opens in, as one or more `column:direction` keys, most significant first. It is the same form the table writes to its own address when a column header is clicked, so a sort read off the address bar can be pasted here. The columns are `attributes`, `ext`, `length`, `name`, `path`, `queue`, `size`, `slot`, `speed` and `user`; a key without a direction is ascending. Blank keeps the order the peers answered in. A sort picked from the headers overrides it for that view, and clicking the sorted column round to *unsorted* reaches the peers' order without changing the setting. The grouped view sorts peers rather than files and is not affected.
 
 `default_filter` is what the filter box holds when a search is opened, in the box's own syntax -- `islossless`, `minbitrate:320`, `-live`. It applies to both views. It is a starting value rather than a rule: clearing or editing the box applies to the search on screen and changes nothing here.
 
-Both reach the UI over the application hub, so a change takes effect without a reload.
+`search_again` decides what a search's **Search Again** button does. `new` (the default) starts a new search with the same text, so the list gains a row and the old one keeps its results. `rerun` runs the same search again in place: same id, its results replaced, one row in the list. Running it in place also keeps a watch on the search and the downloads that name it attached to it. A search can only be run again once it has finished. The API behind `rerun` is `POST /api/v0/searches/{id}/rerun`, available whichever is set.
+
+All three reach the UI over the application hub, so a change takes effect without a reload.
 
 | Command-Line              | Environment Variable          | Description                                                        |
 | ------------------------- | ----------------------------- | ------------------------------------------------------------------ |
 | `--search-default-sort`   | `SLSKD_SEARCH_DEFAULT_SORT`   | The order the results table opens in, as `column:direction` keys   |
 | `--search-default-filter` | `SLSKD_SEARCH_DEFAULT_FILTER` | The filter the search results open with                            |
+| `--search-again`          | `SLSKD_SEARCH_AGAIN`          | What Search Again does: `new` (a new search) or `rerun` (in place) |
 
 #### **YAML**
 ```yaml
 searches:
   default_sort: size:desc
   default_filter: islossless
+  search_again: rerun
 ```
 
 # Search Watches

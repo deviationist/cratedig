@@ -130,6 +130,72 @@ namespace slskd.Search.API
         }
 
         /// <summary>
+        ///     Runs the search corresponding to the specified <paramref name="id"/> again, in place.
+        /// </summary>
+        /// <remarks>
+        ///     Same id and same text; the previous run's responses are replaced. A watch on the search and the
+        ///     downloads that name it stay with it, which a new search would not do.
+        /// </remarks>
+        /// <param name="id">The unique id of the search.</param>
+        /// <returns></returns>
+        /// <response code="200">The search was started again.</response>
+        /// <response code="404">A matching search was not found.</response>
+        /// <response code="409">The search is still running.</response>
+        [HttpPost("{id}/rerun")]
+        [Authorize(Policy = AuthPolicy.Any, Roles = AuthRole.ReadWriteOrAdministrator)]
+        public async Task<IActionResult> Rerun([FromRoute] Guid id)
+        {
+            if (Program.IsRelayAgent)
+            {
+                return Forbid();
+            }
+
+            var existing = await Searches.FindAsync(search => search.Id == id);
+
+            if (existing == default)
+            {
+                return NotFound();
+            }
+
+            if (!existing.IsComplete)
+            {
+                return Conflict("The search is still running");
+            }
+
+            if (!SearchRequestLimiter.Wait(0))
+            {
+                return StatusCode(429, "Only one concurrent operation is permitted. Wait until the previous request completes");
+            }
+
+            try
+            {
+                // the options a search from the web UI gets, which sends only its text
+                var request = new SearchRequest { Id = id, SearchText = existing.SearchText };
+                var search = await Searches.StartAsync(id, SearchQuery.FromText(existing.SearchText), SearchScope.Network, request.ToSearchOptions(), replaceExisting: true);
+                return Ok(search);
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is Soulseek.DuplicateTokenException)
+            {
+                Log.Error(ex, "Failed to run search {Id} again: {Message}", id, ex.Message);
+                return BadRequest(ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                Log.Error(ex, "Failed to run search {Id} again: {Message}", id, ex.Message);
+                return Conflict(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to run search {Id} again: {Message}", id, ex.Message);
+                return StatusCode(500, ex.Message);
+            }
+            finally
+            {
+                SearchRequestLimiter.Release();
+            }
+        }
+
+        /// <summary>
         ///     Gets the state of the search corresponding to the specified <paramref name="id"/>.
         /// </summary>
         /// <param name="id">The unique id of the search.</param>

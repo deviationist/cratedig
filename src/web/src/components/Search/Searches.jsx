@@ -317,6 +317,22 @@ const Searches = ({ server } = {}) => {
     );
   };
 
+  // run a finished search again in place: same id and row, its results
+  // replaced. the hub's create message brings the new run's state
+  const rerun = async (search) => {
+    try {
+      setCreating(true);
+      await library.rerun({ id: search.id });
+    } catch (rerunError) {
+      console.error(rerunError);
+      toast.error(
+        rerunError?.response?.data ?? rerunError?.message ?? rerunError,
+      );
+    } finally {
+      setCreating(false);
+    }
+  };
+
   // stop an in-progress search
   const stop = async (search) => {
     try {
@@ -365,6 +381,7 @@ const Searches = ({ server } = {}) => {
           hub={hub}
           onCreate={create}
           onRemove={remove}
+          onRerun={rerun}
           onSearchChanged={onSearchChanged}
           onStop={stop}
           onWatchChanged={onWatchChanged}
