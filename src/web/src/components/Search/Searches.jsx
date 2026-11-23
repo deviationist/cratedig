@@ -137,6 +137,14 @@ const Searches = ({ server } = {}) => {
     }
   };
 
+  // take a search's state from a REST call, for when the hub's update saying
+  // it ended went missing.  a search no longer listed stays gone
+  const onSearchChanged = (changed) => {
+    setSearches((old) =>
+      old[changed.id] ? { ...old, [changed.id]: changed } : old,
+    );
+  };
+
   // delete a search
   const remove = async (search) => {
     try {
@@ -194,6 +202,7 @@ const Searches = ({ server } = {}) => {
           hub={hub}
           onCreate={create}
           onRemove={remove}
+          onSearchChanged={onSearchChanged}
           onStop={stop}
           removing={removing}
           search={searches[searchId]}

@@ -401,6 +401,20 @@ namespace slskd.Search
 
                         Update(search);
 
+                        // saved, so readers can go to the database from here on; then tell subscribers they
+                        // hold every response, on the channel that brought them
+                        Live.TryRemove(id, out _);
+
+                        try
+                        {
+                            await SearchHub.SendResponsesCompleteAsync(id, search.Responses.Count());
+                        }
+                        catch (Exception ex)
+                        {
+                            // subscribers still learn the search ended from its update, and fetch the responses
+                            Log.Warning(ex, "Failed to send completion of search {Id} to subscribers: {Message}", id, ex.Message);
+                        }
+
                         // zero responses before broadcasting, as we don't want to blast this
                         // data out over the SignalR socket
                         await SearchHub.BroadcastUpdateAsync(search with { Responses = [] });
