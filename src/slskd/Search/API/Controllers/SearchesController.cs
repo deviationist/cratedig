@@ -134,13 +134,14 @@ namespace slskd.Search.API
         /// </summary>
         /// <remarks>
         ///     Same id and same text; the previous run's responses are replaced. A watch on the search and the
-        ///     downloads that name it stay with it, which a new search would not do.
+        ///     downloads that name it stay with it, which a new search would not do. A search still running is stopped
+        ///     and started over.
         /// </remarks>
         /// <param name="id">The unique id of the search.</param>
         /// <returns></returns>
         /// <response code="200">The search was started again.</response>
         /// <response code="404">A matching search was not found.</response>
-        /// <response code="409">The search is still running.</response>
+        /// <response code="409">The search did not stop in time to be started over.</response>
         [HttpPost("{id}/rerun")]
         [Authorize(Policy = AuthPolicy.Any, Roles = AuthRole.ReadWriteOrAdministrator)]
         public async Task<IActionResult> Rerun([FromRoute] Guid id)
@@ -157,9 +158,11 @@ namespace slskd.Search.API
                 return NotFound();
             }
 
-            if (!existing.IsComplete)
+            // running again means starting over: a run in progress is stopped, and its run given time to save,
+            // before the new one takes the id. outside the request limiter, so other searches are not held up
+            if (!await Searches.StopAndWaitAsync(id, TimeSpan.FromSeconds(10)))
             {
-                return Conflict("The search is still running");
+                return Conflict("The search did not stop in time to be started over; try again in a moment");
             }
 
             if (!SearchRequestLimiter.Wait(0))

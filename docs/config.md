@@ -1433,7 +1433,7 @@ How the web UI presents a search's results when it is opened, and what its Searc
 
 `default_filter` is what the filter box holds when a search is opened, in the box's own syntax -- `islossless`, `minbitrate:320`, `-live`. It applies to both views. It is a starting value rather than a rule: clearing or editing the box applies to the search on screen and changes nothing here.
 
-`search_again` decides what a search's **Search Again** button does. `new` (the default) starts a new search with the same text, so the list gains a row and the old one keeps its results. `rerun` runs the same search again in place: same id, its results replaced, one row in the list. Running it in place also keeps a watch on the search and the downloads that name it attached to it. A search can only be run again once it has finished. The API behind `rerun` is `POST /api/v0/searches/{id}/rerun`, available whichever is set.
+`search_again` decides what a search's **Search Again** button does. `new` (the default) starts a new search with the same text, so the list gains a row and the old one keeps its results. `rerun` runs the same search again in place: same id, its results replaced, one row in the list. Running it in place also keeps a watch on the search and the downloads that name it attached to it. Pressed while the search is still running, `rerun` stops it and starts it over. The API behind `rerun` is `POST /api/v0/searches/{id}/rerun`, available whichever is set.
 
 All three reach the UI over the application hub, so a change takes effect without a reload.
 
