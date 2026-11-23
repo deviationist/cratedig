@@ -133,14 +133,26 @@ export const getResponses = async ({ id }) => {
  * (from 0), then what arrived since, every half second or so. Positions never
  * change, so a chunk that overlaps what is already held contributes only its
  * tail, and one that starts beyond it -- possible when the first streamed
- * chunk overtakes the snapshot -- waits until the gap is filled.
+ * chunk overtakes the snapshot, or when a chunk was lost -- waits until the
+ * gap is filled.
  *
- * buffer: { responses, pending }, starting from emptyResponseBuffer
+ * The last chunk is marked complete and carries the total, sent once the
+ * responses are saved: holding that many means holding them all.
+ *
+ * buffer: { responses, pending, total }, starting from emptyResponseBuffer
  */
-export const emptyResponseBuffer = { pending: [], responses: [] };
+export const emptyResponseBuffer = {
+  pending: [],
+  responses: [],
+  total: undefined,
+};
+
+export const isResponseStreamComplete = (buffer) =>
+  buffer.total !== undefined && buffer.responses.length >= buffer.total;
 
 export const addResponseChunk = (buffer, chunk) => {
   let { responses } = buffer;
+  const total = chunk.complete ? chunk.total : buffer.total;
   let pending = [...buffer.pending, chunk];
   let consumed = true;
 
@@ -167,7 +179,7 @@ export const addResponseChunk = (buffer, chunk) => {
     pending = waiting;
   }
 
-  return { pending, responses };
+  return { pending, responses, total };
 };
 
 const getNthMatch = (string, regex, n) => {

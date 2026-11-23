@@ -797,6 +797,55 @@ describe('addResponseChunk', () => {
     expect(buffer.pending).toEqual([]);
   });
 
+  it('is complete once it holds the total the closing chunk names', () => {
+    let buffer = search.addResponseChunk(search.emptyResponseBuffer, {
+      from: 0,
+      responses: responsesOf('a', 'b'),
+    });
+
+    expect(search.isResponseStreamComplete(buffer)).toBe(false);
+
+    buffer = search.addResponseChunk(buffer, {
+      complete: true,
+      from: 2,
+      responses: [],
+      total: 2,
+    });
+
+    expect(search.isResponseStreamComplete(buffer)).toBe(true);
+  });
+
+  it('is not complete while a lost chunk leaves it short of the total', () => {
+    let buffer = search.addResponseChunk(search.emptyResponseBuffer, {
+      from: 0,
+      responses: responsesOf('a'),
+    });
+    // the chunk holding 'b' never arrived
+    buffer = search.addResponseChunk(buffer, {
+      from: 2,
+      responses: responsesOf('c'),
+    });
+    buffer = search.addResponseChunk(buffer, {
+      complete: true,
+      from: 3,
+      responses: [],
+      total: 3,
+    });
+
+    expect(names(buffer)).toEqual(['a']);
+    expect(search.isResponseStreamComplete(buffer)).toBe(false);
+
+    // a fresh snapshot fills the gap
+    buffer = search.addResponseChunk(buffer, {
+      from: 0,
+      responses: responsesOf('a', 'b', 'c'),
+    });
+
+    expect(names(buffer)).toEqual(['a', 'b', 'c']);
+    expect(buffer.pending).toEqual([]);
+    expect(search.isResponseStreamComplete(buffer)).toBe(true);
+  });
+
   it('does not change the buffer it was given', () => {
     const buffer = search.addResponseChunk(search.emptyResponseBuffer, {
       from: 0,

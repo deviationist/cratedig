@@ -5,7 +5,9 @@ import {
   filterResponse,
   flattenResponses,
   getResponses,
+  getStatus,
   indexDownloads,
+  isResponseStreamComplete,
   parseFiltersFromString,
 } from '../../../lib/searches';
 import { getAll as getTransfers } from '../../../lib/transfers';
@@ -308,6 +310,17 @@ const useResultFilters = (defaultFilter) => {
   return [edited ?? defaultFilter ?? '', setEdited];
 };
 
+// how long a gap in the streamed responses may stay before subscribing again
+const GAP_WAIT_MS = 2_000;
+// how long the server may say nothing about a running search before asking
+// whether it ended
+const QUIET_MS = 20_000;
+// how often to look for either of those
+const WATCHDOG_MS = 1_000;
+// how long to wait for the closing chunk after the search's update says it
+// ended, before fetching the responses instead
+const CLOSE_WAIT_MS = 3_000;
+
 // the line shown while a search runs
 const describeProgress = ({
   fileCount,
@@ -327,6 +340,7 @@ const SearchDetail = ({
   hub,
   onCreate,
   onRemove,
+  onSearchChanged,
   onStop,
   onWatchChanged,
   removing,
@@ -353,8 +367,6 @@ const SearchDetail = ({
   const [watching, setWatching] = useState(false);
 
   const [results, setResults] = useState([]);
-  // the responses streamed so far, and any chunk waiting for a gap to fill
-  const streamRef = useRef(emptyResponseBuffer);
 
   // filters and sorting options
   const [hiddenResults, setHiddenResults] = useState([]);
@@ -369,32 +381,112 @@ const SearchDetail = ({
   );
   const [displayCount, setDisplayCount] = useState(5);
 
-  // while the search runs, show its responses as they arrive: subscribe to
-  // them over the hub, which answers with those received so far and then
-  // sends the rest in numbered chunks
+  // A search in progress streams its responses: the page subscribes over the
+  // hub, which answers with those received so far, then sends the rest in
+  // numbered chunks and closes with a chunk naming the total, once they are
+  // saved. Holding the total means holding them all, so nothing is fetched
+  // again. Each way this can go wrong has a fallback:
+  //
+  // - a chunk lost on the way leaves a gap the later ones wait behind; if it
+  //   is still there after GAP_WAIT_MS, subscribe again for a fresh snapshot
+  // - the search's own update saying it ended can be lost, and the closing
+  //   chunk with it; after QUIET_MS without a word, ask for its state
+  // - the closing chunk can be lost alone; the search's update still arrives,
+  //   and after CLOSE_WAIT_MS the responses are fetched in full
+  const streamRef = useRef(emptyResponseBuffer);
+  const streamingRef = useRef(false);
+  const lastHeardRef = useRef(Date.now());
+  const [streamComplete, setStreamComplete] = useState(false);
+
+  // every update to the search counts as hearing from the server
   useEffect(() => {
-    if (isComplete || !hub) {
+    lastHeardRef.current = Date.now();
+  }, [search]);
+
+  // ask the server for the search's state, and take it if it has ended: for
+  // when the update saying so went missing
+  const checkEnded = async () => {
+    try {
+      const status = await getStatus({ id });
+
+      if (status?.isComplete) {
+        onSearchChanged?.(status);
+      }
+    } catch (statusError) {
+      console.warn('could not check whether the search ended', statusError);
+    }
+  };
+
+  const checkEndedRef = useRef(checkEnded);
+  checkEndedRef.current = checkEnded;
+
+  useEffect(() => {
+    // a search that had already ended when the page opened has nothing to
+    // stream; its responses are fetched below
+    if (!hub || search.isComplete) {
       return undefined;
     }
 
     let active = true;
+    // when the oldest chunk still waiting for a gap to fill arrived
+    let gapSince;
     streamRef.current = emptyResponseBuffer;
+    streamingRef.current = true;
+    setStreamComplete(false);
 
     const apply = (chunk) => {
       if (!active || !chunk || chunk.searchId !== id) return;
 
+      lastHeardRef.current = Date.now();
       streamRef.current = addResponseChunk(streamRef.current, chunk);
       setResults(streamRef.current.responses);
+
+      if (streamRef.current.pending.length === 0) {
+        gapSince = undefined;
+      } else {
+        gapSince ??= Date.now();
+      }
+
+      if (isResponseStreamComplete(streamRef.current)) {
+        setStreamComplete(true);
+      }
     };
 
     const subscribe = async () => {
       try {
-        apply(await hub.invoke('Subscribe', id));
+        const snapshot = await hub.invoke('Subscribe', id);
+
+        if (!active) return;
+
+        // the search is no longer running: its responses are saved, and
+        // its update saying so is on the way, or was lost
+        if (!snapshot) {
+          streamingRef.current = false;
+          checkEndedRef.current();
+          return;
+        }
+
+        apply(snapshot);
       } catch (subscribeError) {
-        // not fatal: the results load in full once the search completes
+        // not fatal: the responses are fetched in full once it ends
         console.warn('could not subscribe to search responses', subscribeError);
+        streamingRef.current = false;
       }
     };
+
+    const watchdog = setInterval(() => {
+      const now = Date.now();
+
+      if (gapSince !== undefined && now - gapSince > GAP_WAIT_MS) {
+        gapSince = undefined;
+        subscribe();
+      }
+
+      if (now - lastHeardRef.current > QUIET_MS) {
+        lastHeardRef.current = now;
+        checkEndedRef.current();
+      }
+    }, WATCHDOG_MS);
 
     const unsubscribe = async () => {
       try {
@@ -409,16 +501,28 @@ const SearchDetail = ({
 
     return () => {
       active = false;
+      streamingRef.current = false;
+      clearInterval(watchdog);
       hub.off('responses', apply);
       unsubscribe();
     };
-  }, [hub, id, isComplete]);
+    // started once per search; it follows the search's state through refs
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hub, id]);
 
-  // once the search is complete, fetch the full set.  it replaces whatever was
-  // streamed without a loader, since it is the same set plus anything a dropped
-  // chunk missed; a search opened after it completed shows the loader
+  // the closing chunk says the search ended even when its update went missing
   useEffect(() => {
-    if (!isComplete) {
+    if (streamComplete && !isComplete) {
+      checkEndedRef.current();
+    }
+  }, [isComplete, streamComplete]);
+
+  // once the search has ended: nothing to do if the stream delivered every
+  // response. Otherwise fetch them -- without a loader when some streamed in,
+  // and after giving the closing chunk CLOSE_WAIT_MS to arrive, since the
+  // search's update usually overtakes it
+  useEffect(() => {
+    if (!isComplete || streamComplete) {
       return undefined;
     }
 
@@ -443,12 +547,13 @@ const SearchDetail = ({
       }
     };
 
-    get();
+    const timer = setTimeout(get, streamingRef.current ? CLOSE_WAIT_MS : 0);
 
     return () => {
       active = false;
+      clearTimeout(timer);
     };
-  }, [id, isComplete]);
+  }, [id, isComplete, streamComplete]);
 
   // apply sorting and filters.  this can take a while for larger result
   // sets, so memoize it.

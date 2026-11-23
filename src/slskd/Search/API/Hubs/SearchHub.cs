@@ -91,6 +91,25 @@ namespace slskd.Search.API
         }
 
         /// <summary>
+        ///     Tell the clients subscribed to the search that it has ended and its responses are saved.
+        /// </summary>
+        /// <remarks>
+        ///     Sent on the same channel as the responses, and after the last of them, so a subscriber holding
+        ///     <paramref name="total"/> responses knows it holds them all. It is also a second signal that the search
+        ///     has ended, independent of the search's own update.
+        /// </remarks>
+        /// <param name="hub">The hub.</param>
+        /// <param name="searchId">The ID of the search.</param>
+        /// <param name="total">The number of responses the search received.</param>
+        /// <returns>The operation context.</returns>
+        public static Task SendResponsesCompleteAsync(this IHubContext<SearchHub> hub, Guid searchId, int total)
+        {
+            return hub.Clients.Group(ResponseGroup(searchId)).SendAsync(
+                SearchHubMethods.Responses,
+                new { searchId, from = total, responses = Array.Empty<Response>(), complete = true, total });
+        }
+
+        /// <summary>
         ///     Broadcast the creation of a new search.
         /// </summary>
         /// <remarks>
@@ -145,7 +164,8 @@ namespace slskd.Search.API
         /// <remarks>
         ///     <para>
         ///         Returns the responses received so far, numbered from 0; the ones that follow arrive as
-        ///         <see cref="SearchHubMethods.Responses"/> messages, each numbered from where it starts.
+        ///         <see cref="SearchHubMethods.Responses"/> messages, each numbered from where it starts. The last
+        ///         is marked complete and carries the total, once the responses are saved.
         ///     </para>
         ///     <para>
         ///         The caller joins the group before the snapshot is taken, so nothing falls between the two; a
@@ -154,7 +174,10 @@ namespace slskd.Search.API
         ///     </para>
         /// </remarks>
         /// <param name="searchId">The ID of the search.</param>
-        /// <returns>The responses so far, or null if the search is not in progress.</returns>
+        /// <returns>
+        ///     The responses so far, or null if the search is not in progress: it has ended and its responses are
+        ///     saved, or it does not exist.
+        /// </returns>
         public async Task<object> Subscribe(Guid searchId)
         {
             if (Program.IsRelayAgent)
