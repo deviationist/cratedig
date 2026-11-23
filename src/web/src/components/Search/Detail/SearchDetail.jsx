@@ -1,16 +1,24 @@
 import {
+  addResponseChunk,
+  emptyResponseBuffer,
   filterResponse,
   getResponses,
   parseFiltersFromString,
 } from '../../../lib/searches';
-import { sleep } from '../../../lib/util';
 import ErrorSegment from '../../Shared/ErrorSegment';
 import LoaderSegment from '../../Shared/LoaderSegment';
 import Switch from '../../Shared/Switch';
 import Response from '../Response';
 import SearchDetailHeader from './SearchDetailHeader';
-import React, { useEffect, useMemo, useState } from 'react';
-import { Button, Checkbox, Dropdown, Input, Segment } from 'semantic-ui-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Button,
+  Checkbox,
+  Dropdown,
+  Icon,
+  Input,
+  Segment,
+} from 'semantic-ui-react';
 
 const sortDropdownOptions = [
   {
@@ -25,9 +33,23 @@ const sortDropdownOptions = [
   },
 ];
 
+// the line shown while a search runs
+const describeProgress = ({
+  fileCount,
+  lockedFileCount,
+  responseCount,
+  state,
+}) =>
+  state === 'InProgress'
+    ? `Found ${fileCount} files ${
+        lockedFileCount > 0 ? `(plus ${lockedFileCount} locked) ` : ''
+      }from ${responseCount} users`
+    : 'Loading results...';
+
 const SearchDetail = ({
   creating,
   disabled,
+  hub,
   onCreate,
   onRemove,
   onStop,
@@ -35,13 +57,14 @@ const SearchDetail = ({
   search,
   stopping,
 }) => {
-  const { fileCount, id, isComplete, lockedFileCount, responseCount, state } =
-    search;
+  const { id, isComplete } = search;
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(undefined);
 
   const [results, setResults] = useState([]);
+  // the responses streamed so far, and any chunk waiting for a gap to fill
+  const streamRef = useRef(emptyResponseBuffer);
 
   // filters and sorting options
   const [hiddenResults, setHiddenResults] = useState([]);
@@ -52,29 +75,85 @@ const SearchDetail = ({
   const [resultFilters, setResultFilters] = useState('');
   const [displayCount, setDisplayCount] = useState(5);
 
-  // when the search transitions from !isComplete -> isComplete,
-  // fetch the results from the server
+  // while the search runs, show its responses as they arrive: subscribe to
+  // them over the hub, which answers with those received so far and then
+  // sends the rest in numbered chunks
   useEffect(() => {
-    const get = async () => {
+    if (isComplete || !hub) {
+      return undefined;
+    }
+
+    let active = true;
+    streamRef.current = emptyResponseBuffer;
+
+    const apply = (chunk) => {
+      if (!active || !chunk || chunk.searchId !== id) return;
+
+      streamRef.current = addResponseChunk(streamRef.current, chunk);
+      setResults(streamRef.current.responses);
+    };
+
+    const subscribe = async () => {
       try {
-        setLoading(true);
-
-        // the results may not be ready yet.  this is very rare, but
-        // if it happens the search will complete with no results.
-        await sleep(500);
-
-        const responses = await getResponses({ id });
-        setResults(responses);
-        setLoading(false);
-      } catch (getError) {
-        setError(getError);
-        setLoading(false);
+        apply(await hub.invoke('Subscribe', id));
+      } catch (subscribeError) {
+        // not fatal: the results load in full once the search completes
+        console.warn('could not subscribe to search responses', subscribeError);
       }
     };
 
-    if (isComplete) {
-      get();
+    const unsubscribe = async () => {
+      try {
+        await hub.invoke('Unsubscribe', id);
+      } catch {
+        // the connection is gone, and the subscription with it
+      }
+    };
+
+    hub.on('responses', apply);
+    subscribe();
+
+    return () => {
+      active = false;
+      hub.off('responses', apply);
+      unsubscribe();
+    };
+  }, [hub, id, isComplete]);
+
+  // once the search is complete, fetch the full set.  it replaces whatever was
+  // streamed without a loader, since it is the same set plus anything a dropped
+  // chunk missed; a search opened after it completed shows the loader
+  useEffect(() => {
+    if (!isComplete) {
+      return undefined;
     }
+
+    let active = true;
+    const streamed = streamRef.current.responses.length > 0;
+
+    const get = async () => {
+      try {
+        if (!streamed) setLoading(true);
+
+        const responses = await getResponses({ id });
+
+        if (active) {
+          setResults(responses);
+          setLoading(false);
+        }
+      } catch (getError) {
+        if (active) {
+          setError(getError);
+          setLoading(false);
+        }
+      }
+    };
+
+    get();
+
+    return () => {
+      active = false;
+    };
   }, [id, isComplete]);
 
   // apply sorting and filters.  this can take a while for larger result
@@ -123,6 +202,7 @@ const SearchDetail = ({
     setLoading(false);
     setError(undefined);
     setResults([]);
+    streamRef.current = emptyResponseBuffer;
     setHiddenResults([]);
     setDisplayCount(5);
   };
@@ -136,6 +216,8 @@ const SearchDetail = ({
     reset();
     onRemove(search);
   };
+
+  const progress = describeProgress(search);
 
   const filteredCount = results?.length - sortedAndFilteredResults.length;
   const remainingCount = sortedAndFilteredResults.length - displayCount;
@@ -162,19 +244,22 @@ const SearchDetail = ({
       <Switch
         loading={loading && <LoaderSegment />}
         searching={
-          !isComplete && (
-            <LoaderSegment>
-              {state === 'InProgress'
-                ? `Found ${fileCount} files ${
-                    lockedFileCount > 0
-                      ? `(plus ${lockedFileCount} locked) `
-                      : ''
-                  }from ${responseCount} users`
-                : 'Loading results...'}
-            </LoaderSegment>
-          )
+          !isComplete &&
+          results.length === 0 && <LoaderSegment>{progress}</LoaderSegment>
         }
       >
+        {!isComplete && (
+          <Segment
+            className="search-progress"
+            raised
+          >
+            <Icon
+              loading
+              name="circle notch"
+            />
+            {progress}
+          </Segment>
+        )}
         {loaded && (
           <Segment
             className="search-options"

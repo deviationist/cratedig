@@ -259,3 +259,90 @@ describe('parseFiltersFromString', () => {
     });
   });
 });
+
+const responsesOf = (...usernames) =>
+  usernames.map((username) => ({ username }));
+const names = (buffer) => buffer.responses.map((x) => x.username);
+
+describe('addResponseChunk', () => {
+  it('appends a snapshot to an empty buffer', () => {
+    const buffer = search.addResponseChunk(search.emptyResponseBuffer, {
+      from: 0,
+      responses: responsesOf('a', 'b'),
+    });
+
+    expect(names(buffer)).toEqual(['a', 'b']);
+    expect(buffer.pending).toEqual([]);
+  });
+
+  it('takes only the new tail of a chunk that overlaps what is held', () => {
+    let buffer = search.addResponseChunk(search.emptyResponseBuffer, {
+      from: 0,
+      responses: responsesOf('a', 'b', 'c'),
+    });
+    buffer = search.addResponseChunk(buffer, {
+      from: 2,
+      responses: responsesOf('c', 'd'),
+    });
+
+    expect(names(buffer)).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('ignores a chunk that is wholly held already', () => {
+    let buffer = search.addResponseChunk(search.emptyResponseBuffer, {
+      from: 0,
+      responses: responsesOf('a', 'b'),
+    });
+    const before = buffer.responses;
+    buffer = search.addResponseChunk(buffer, {
+      from: 0,
+      responses: responsesOf('a'),
+    });
+
+    expect(buffer.responses).toBe(before);
+  });
+
+  it('holds a chunk that arrives ahead of the snapshot until the snapshot fills the gap', () => {
+    let buffer = search.addResponseChunk(search.emptyResponseBuffer, {
+      from: 3,
+      responses: responsesOf('d', 'e'),
+    });
+
+    expect(names(buffer)).toEqual([]);
+    expect(buffer.pending).toHaveLength(1);
+
+    buffer = search.addResponseChunk(buffer, {
+      from: 0,
+      responses: responsesOf('a', 'b', 'c'),
+    });
+
+    expect(names(buffer)).toEqual(['a', 'b', 'c', 'd', 'e']);
+    expect(buffer.pending).toEqual([]);
+  });
+
+  it('applies several held chunks in order, whatever order they came in', () => {
+    let buffer = search.emptyResponseBuffer;
+
+    for (const chunk of [
+      { from: 4, responses: responsesOf('e') },
+      { from: 2, responses: responsesOf('c', 'd') },
+      { from: 0, responses: responsesOf('a', 'b') },
+    ]) {
+      buffer = search.addResponseChunk(buffer, chunk);
+    }
+
+    expect(names(buffer)).toEqual(['a', 'b', 'c', 'd', 'e']);
+    expect(buffer.pending).toEqual([]);
+  });
+
+  it('does not change the buffer it was given', () => {
+    const buffer = search.addResponseChunk(search.emptyResponseBuffer, {
+      from: 0,
+      responses: responsesOf('a'),
+    });
+    search.addResponseChunk(buffer, { from: 1, responses: responsesOf('b') });
+
+    expect(names(buffer)).toEqual(['a']);
+    expect(search.emptyResponseBuffer.responses).toEqual([]);
+  });
+});

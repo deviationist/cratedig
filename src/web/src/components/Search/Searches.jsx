@@ -20,6 +20,9 @@ const Searches = ({ server } = {}) => {
   const [removing, setRemoving] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [creating, setCreating] = useState(false);
+  // the hub connection, shared with the detail view so it can subscribe to
+  // the responses of the search it shows
+  const [hub, setHub] = useState(undefined);
 
   const inputRef = useRef();
 
@@ -50,6 +53,7 @@ const Searches = ({ server } = {}) => {
     onConnecting();
 
     const searchHub = createSearchHubConnection();
+    setHub(searchHub);
 
     searchHub.on('list', (searchesEvent) => {
       onUpdate(
@@ -187,6 +191,7 @@ const Searches = ({ server } = {}) => {
         <SearchDetail
           creating={creating}
           disabled={!server?.isConnected}
+          hub={hub}
           onCreate={create}
           onRemove={remove}
           onStop={stop}

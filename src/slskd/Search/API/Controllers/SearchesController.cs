@@ -146,11 +146,20 @@ namespace slskd.Search.API
                 return Forbid();
             }
 
-            var search = await Searches.FindAsync(search => search.Id == id, includeResponses);
+            // a search in progress has no responses saved yet; serve the ones received so far.  read
+            // before the database: a search leaves the live set only once its responses are saved
+            var live = includeResponses ? Searches.GetLiveResponses(id) : null;
+
+            var search = await Searches.FindAsync(search => search.Id == id, includeResponses && live == null);
 
             if (search == default)
             {
                 return NotFound();
+            }
+
+            if (live != null)
+            {
+                search = search with { Responses = live.Responses };
             }
 
             return Ok(search);
@@ -170,6 +179,12 @@ namespace slskd.Search.API
             if (Program.IsRelayAgent)
             {
                 return Forbid();
+            }
+
+            // a search in progress has no responses saved yet; serve the ones received so far
+            if (Searches.GetLiveResponses(id) is { } live)
+            {
+                return Ok(live.Responses);
             }
 
             var search = await Searches.FindAsync(search => search.Id == id, includeResponses: true);
