@@ -76,6 +76,13 @@ namespace slskd.Search
         Task<Search> FindAsync(Expression<Func<Search, bool>> expression, bool includeResponses = false);
 
         /// <summary>
+        ///     Returns the responses received so far by the search in progress matching the specified <paramref name="id"/>.
+        /// </summary>
+        /// <param name="id">The unique identifier for the search.</param>
+        /// <returns>The responses so far, or null if no search with that id is in progress.</returns>
+        ResponseChunk GetLiveResponses(Guid id);
+
+        /// <summary>
         ///     Returns a list of all completed and in-progress searches, with responses omitted, matching the optional <paramref name="expression"/>.
         /// </summary>
         /// <param name="expression">An optional expression used to match searches.</param>
@@ -126,6 +133,11 @@ namespace slskd.Search
     public class SearchService : ISearchService
     {
         /// <summary>
+        ///     How often the responses of a search in progress are sent to its subscribers, in milliseconds.
+        /// </summary>
+        private const int ResponseStreamInterval = 500;
+
+        /// <summary>
         ///     Initializes a new instance of the <see cref="SearchService"/> class.
         /// </summary>
         /// <param name="searchHub"></param>
@@ -149,6 +161,13 @@ namespace slskd.Search
 
         private ConcurrentDictionary<Guid, CancellationTokenSource> CancellationTokens { get; }
             = new ConcurrentDictionary<Guid, CancellationTokenSource>();
+
+        /// <summary>
+        ///     Gets the responses of the searches in progress. A search is removed only once its responses are saved, so
+        ///     a reader always finds them either here or in the database.
+        /// </summary>
+        private ConcurrentDictionary<Guid, LiveResponses> Live { get; }
+            = new ConcurrentDictionary<Guid, LiveResponses>();
 
         private ISoulseekClient Client { get; }
         private IDbContextFactory<SearchDbContext> ContextFactory { get; }
@@ -229,6 +248,16 @@ namespace slskd.Search
             }
 
             return selector.FirstOrDefaultAsync();
+        }
+
+        /// <summary>
+        ///     Returns the responses received so far by the search in progress matching the specified <paramref name="id"/>.
+        /// </summary>
+        /// <param name="id">The unique identifier for the search.</param>
+        /// <returns>The responses so far, or null if no search with that id is in progress.</returns>
+        public ResponseChunk GetLiveResponses(Guid id)
+        {
+            return Live.TryGetValue(id, out var live) ? live.Snapshot() : null;
         }
 
         /// <summary>
@@ -322,9 +351,11 @@ namespace slskd.Search
                 searchBroadcasted = true;
 
                 // initialize the list of responses that we'll use to accumulate them
-                // populated by the responseHandler we pass to SearchAsync
-                // responses arrive concurrently from many connections, so this must be thread safe
-                ConcurrentQueue<SearchResponse> responses = new();
+                // populated by the responseHandler we pass to SearchAsync, and readable while the
+                // search runs so they can be shown as they arrive.  responses arrive concurrently
+                // from many connections; LiveResponses is thread safe
+                var responses = new LiveResponses();
+                Live.TryAdd(id, responses);
 
                 options ??= new SearchOptions();
                 options = options.WithActions(
@@ -361,7 +392,7 @@ namespace slskd.Search
                 // the client state (e.g. disconnected) or a problem with the search (e.g. no terms)
                 var soulseekSearchTask = Client.SearchAsync(
                     query,
-                    responseHandler: (response) => responses.Enqueue(response),
+                    responseHandler: (response) => responses.Add(Response.FromSoulseekSearchResponse(response)),
                     scope,
                     token,
                     options,
@@ -372,6 +403,9 @@ namespace slskd.Search
                 // update the search record to accurately reflect the final state
                 _ = Task.Run(async () =>
                 {
+                    using var streamCancellation = new CancellationTokenSource();
+                    var streaming = StreamResponsesAsync(id, responses, streamCancellation.Token);
+
                     try
                     {
                         try
@@ -408,10 +442,30 @@ namespace slskd.Search
                             search.State |= SearchStates.Completed;
                         }
 
+                        // send whatever arrived since the last tick, so subscribers hold every response
+                        // before they learn the search has ended
+                        streamCancellation.Cancel();
+                        await streaming;
+                        await SendNewResponsesAsync(id, responses);
+
                         search.EndedAt = DateTime.UtcNow;
-                        search.Responses = responses.Select(r => Response.FromSoulseekSearchResponse(r));
+                        search.Responses = responses.Snapshot().Responses;
 
                         Update(search);
+
+                        // saved, so readers can go to the database from here on; then tell subscribers they
+                        // hold every response, on the channel that brought them
+                        Live.TryRemove(id, out _);
+
+                        try
+                        {
+                            await SearchHub.SendResponsesCompleteAsync(id, search.Responses.Count());
+                        }
+                        catch (Exception ex)
+                        {
+                            // subscribers still learn the search ended from its update, and fetch the responses
+                            Log.Warning(ex, "Failed to send completion of search {Id} to subscribers: {Message}", id, ex.Message);
+                        }
 
                         // zero responses before broadcasting, as we don't want to blast this
                         // data out over the SignalR socket
@@ -427,6 +481,10 @@ namespace slskd.Search
                     }
                     finally
                     {
+                        // only now that the responses are saved (or saving failed), so a reader always finds them
+                        // in one place or the other
+                        streamCancellation.Cancel();
+                        Live.TryRemove(id, out _);
                         rateLimiter.Dispose();
                         CancellationTokens.TryRemove(id, out _);
                     }
@@ -441,6 +499,8 @@ namespace slskd.Search
                 // we'll end up here if the initial call throws for an ArgumentException, InvalidOperationException if
                 // the app isn't connected, and a few other straightforward issues that arise before even requesting the search
                 Log.Error(ex, "Failed to execute search {Search}: {Message}", new { query, scope, options }, ex.Message);
+
+                Live.TryRemove(id, out _);
 
                 // selectively 'undo' whatever actions we were able to take successfully
                 if (searchCreated)
@@ -516,6 +576,50 @@ namespace slskd.Search
             {
                 Log.Error(ex, "Failed to prune searches: {Message}", ex.Message);
                 throw;
+            }
+        }
+
+        /// <summary>
+        ///     Sends the responses of a search in progress to its subscribers every <see cref="ResponseStreamInterval"/>,
+        ///     until cancelled.
+        /// </summary>
+        /// <remarks>
+        ///     One loop per search sends each batch only after the last has been handed off, so batches leave in order.
+        /// </remarks>
+        private async Task StreamResponsesAsync(Guid id, LiveResponses responses, CancellationToken cancellationToken)
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(ResponseStreamInterval));
+
+            try
+            {
+                while (await timer.WaitForNextTickAsync(cancellationToken))
+                {
+                    await SendNewResponsesAsync(id, responses);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // the search ended
+            }
+        }
+
+        private async Task SendNewResponsesAsync(Guid id, LiveResponses responses)
+        {
+            var chunk = responses.TakeNew();
+
+            if (chunk == null)
+            {
+                return;
+            }
+
+            try
+            {
+                await SearchHub.SendResponsesAsync(id, chunk);
+            }
+            catch (Exception ex)
+            {
+                // a subscriber missing a batch waits for the rest, and fetches the whole set once the search ends
+                Log.Warning(ex, "Failed to send {Count} responses for search {Id}: {Message}", chunk.Responses.Count, id, ex.Message);
             }
         }
     }

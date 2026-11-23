@@ -127,6 +127,61 @@ export const getResponses = async ({ id }) => {
   return response;
 };
 
+/*
+ * The responses of a search in progress arrive in chunks, each numbered with
+ * the position of its first response: a snapshot when the page subscribes
+ * (from 0), then what arrived since, every half second or so. Positions never
+ * change, so a chunk that overlaps what is already held contributes only its
+ * tail, and one that starts beyond it -- possible when the first streamed
+ * chunk overtakes the snapshot, or when a chunk was lost -- waits until the
+ * gap is filled.
+ *
+ * The last chunk is marked complete and carries the total, sent once the
+ * responses are saved: holding that many means holding them all.
+ *
+ * buffer: { responses, pending, total }, starting from emptyResponseBuffer
+ */
+export const emptyResponseBuffer = {
+  pending: [],
+  responses: [],
+  total: undefined,
+};
+
+export const isResponseStreamComplete = (buffer) =>
+  buffer.total !== undefined && buffer.responses.length >= buffer.total;
+
+export const addResponseChunk = (buffer, chunk) => {
+  let { responses } = buffer;
+  const total = chunk.complete ? chunk.total : buffer.total;
+  let pending = [...buffer.pending, chunk];
+  let consumed = true;
+
+  while (consumed) {
+    consumed = false;
+    const waiting = [];
+
+    for (const candidate of pending) {
+      if (candidate.from <= responses.length) {
+        const fresh = candidate.responses.slice(
+          responses.length - candidate.from,
+        );
+
+        if (fresh.length > 0) {
+          responses = [...responses, ...fresh];
+        }
+
+        consumed = true;
+      } else {
+        waiting.push(candidate);
+      }
+    }
+
+    pending = waiting;
+  }
+
+  return { pending, responses, total };
+};
+
 const getNthMatch = (string, regex, n) => {
   const match = string.match(regex);
 

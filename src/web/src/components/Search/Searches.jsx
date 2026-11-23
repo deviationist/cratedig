@@ -29,6 +29,9 @@ const Searches = ({ server } = {}) => {
   const [watches, setWatches] = useState({});
   const [clearing, setClearing] = useState(false);
   const [confirmingClear, setConfirmingClear] = useState(false);
+  // the hub connection, shared with the detail view so it can subscribe to
+  // the responses of the search it shows
+  const [hub, setHub] = useState(undefined);
 
   const inputRef = useRef();
 
@@ -88,6 +91,7 @@ const Searches = ({ server } = {}) => {
     onConnecting();
 
     const searchHub = createSearchHubConnection();
+    setHub(searchHub);
 
     searchHub.on('list', (searchesEvent) => {
       onUpdate(
@@ -239,6 +243,14 @@ const Searches = ({ server } = {}) => {
     });
   };
 
+  // take a search's state from a REST call, for when the hub's update saying
+  // it ended went missing.  a search no longer listed stays gone
+  const onSearchChanged = (changed) => {
+    setSearches((old) =>
+      old[changed.id] ? { ...old, [changed.id]: changed } : old,
+    );
+  };
+
   // delete a search
   const remove = async (search) => {
     try {
@@ -350,8 +362,10 @@ const Searches = ({ server } = {}) => {
         <SearchDetail
           creating={creating}
           disabled={!server?.isConnected}
+          hub={hub}
           onCreate={create}
           onRemove={remove}
+          onSearchChanged={onSearchChanged}
           onStop={stop}
           onWatchChanged={onWatchChanged}
           removing={removing}
