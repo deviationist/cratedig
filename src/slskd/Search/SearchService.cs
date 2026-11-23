@@ -120,6 +120,15 @@ namespace slskd.Search
         bool TryCancel(Guid id);
 
         /// <summary>
+        ///     Stops the search matching the specified <paramref name="id"/> if it is running, and waits until its run
+        ///     has saved its responses and let go of the id.
+        /// </summary>
+        /// <param name="id">The unique identifier for the search.</param>
+        /// <param name="timeout">How long to wait.</param>
+        /// <returns>A value indicating whether no run holds the id any more.</returns>
+        Task<bool> StopAndWaitAsync(Guid id, TimeSpan timeout);
+
+        /// <summary>
         ///     Removes <see cref="SearchStates.Completed"/> searches older than the specified <paramref name="age"/>.
         /// </summary>
         /// <param name="age">The age after which records are eligible for pruning, in minutes.</param>
@@ -544,6 +553,35 @@ namespace slskd.Search
             }
 
             return false;
+        }
+
+        /// <summary>
+        ///     Stops the search matching the specified <paramref name="id"/> if it is running, and waits until its run
+        ///     has saved its responses and let go of the id.
+        /// </summary>
+        /// <remarks>
+        ///     A run lets go of its id last, after saving, so an id no longer held is one a new run can take in place.
+        /// </remarks>
+        /// <param name="id">The unique identifier for the search.</param>
+        /// <param name="timeout">How long to wait.</param>
+        /// <returns>A value indicating whether no run holds the id any more.</returns>
+        public async Task<bool> StopAndWaitAsync(Guid id, TimeSpan timeout)
+        {
+            TryCancel(id);
+
+            var deadline = DateTime.UtcNow + timeout;
+
+            while (CancellationTokens.ContainsKey(id))
+            {
+                if (DateTime.UtcNow >= deadline)
+                {
+                    return false;
+                }
+
+                await Task.Delay(50);
+            }
+
+            return true;
         }
 
         /// <summary>

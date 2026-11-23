@@ -4,6 +4,18 @@ import React from 'react';
 import { useMediaQuery } from 'react-responsive';
 import { Button, Header, Icon, Segment } from 'semantic-ui-react';
 
+// what the button does, which depends on the option and on whether the search
+// is still running
+const describeSearchAgain = ({ inPlace, running }) => {
+  if (!inPlace) {
+    return 'Start a new search for the same text; this one stays in the list';
+  }
+
+  return running
+    ? 'Stop this search and start it over, replacing these results'
+    : 'Run this search again, replacing these results';
+};
+
 const RefreshButton = ({
   creating,
   disabled,
@@ -12,6 +24,7 @@ const RefreshButton = ({
   isTinyScreen,
   loaded,
   onCreate,
+  running,
   searchText,
   working,
 }) =>
@@ -21,11 +34,7 @@ const RefreshButton = ({
       icon={isSmallScreen && !isTinyScreen}
       loading={creating}
       onClick={() => onCreate({ navigate: true, search: searchText })}
-      title={
-        inPlace
-          ? 'Run this search again, replacing these results'
-          : 'Start a new search for the same text; this one stays in the list'
-      }
+      title={describeSearchAgain({ inPlace, running })}
     >
       <Icon name="refresh" />
       {(!isSmallScreen || isTinyScreen) && 'Search Again'}
@@ -133,6 +142,7 @@ const SearchDetailHeader = ({
               isTinyScreen={isTinyScreen}
               loaded={loaded}
               onCreate={onCreate}
+              running={!isComplete}
               searchText={searchText}
               working={working}
             />
@@ -167,6 +177,7 @@ const SearchDetailHeader = ({
             isTinyScreen={isTinyScreen}
             loaded={loaded}
             onCreate={onCreate}
+            running={!isComplete}
             searchText={searchText}
             working={working}
           />
