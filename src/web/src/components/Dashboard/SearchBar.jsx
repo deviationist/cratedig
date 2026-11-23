@@ -1,9 +1,10 @@
 import '../Search/Search.css';
 import { urlBase } from '../../config';
+import { createEnterToSearch } from '../../lib/searchEnter';
 import * as library from '../../lib/searches';
 import * as watchLibrary from '../../lib/watches';
 import WatchModal from '../Search/WatchModal';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useHistory } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { Button, Icon, Input, Popup, Segment } from 'semantic-ui-react';
@@ -14,11 +15,19 @@ const SearchBar = ({ server } = {}) => {
   const [watchDraft, setWatchDraft] = useState(undefined);
 
   const inputRef = useRef();
+  // the "started" toast of the last search, taken down if a second Enter opens it
+  const toastRef = useRef();
   const history = useHistory();
 
-  const create = async ({ navigate = false } = {}) => {
+  const openSearch = (id) => {
+    toast.dismiss(toastRef.current);
+    history.push(`${urlBase}/searches/${id}`);
+  };
+
+  // resolves to the new search's id, or undefined when it could not be created
+  const create = async ({ navigate = false, search } = {}) => {
     const ref = inputRef?.current?.inputRef?.current;
-    const searchText = ref.value;
+    const searchText = search || ref.value;
     const id = uuidv4();
 
     try {
@@ -31,25 +40,42 @@ const SearchBar = ({ server } = {}) => {
       setCreating(false);
 
       if (navigate) {
-        history.push(`${urlBase}/searches/${id}`);
+        openSearch(id);
       } else {
         const label =
           searchText.length > 30 ? `${searchText.slice(0, 15)}...` : searchText;
-        toast.info(
+        toastRef.current = toast.info(
           <span>
             Search for &lsquo;{label}&rsquo; started.{' '}
             <Link to={`${urlBase}/searches/${id}`}>View results</Link>
           </span>,
         );
       }
+
+      return id;
     } catch (createError) {
       console.error(createError);
       toast.error(
         createError?.response?.data ?? createError?.message ?? createError,
       );
       setCreating(false);
+      return undefined;
     }
   };
+
+  // Enter once searches and stays, twice opens it (lib/searchEnter). Made once,
+  // since it remembers the last Enter; it reaches the current render's
+  // functions through a ref
+  const latestRef = useRef();
+  latestRef.current = { create, openSearch };
+  const onEnter = useMemo(
+    () =>
+      createEnterToSearch({
+        create: (search) => latestRef.current.create({ search }),
+        open: (id) => latestRef.current.openSearch(id),
+      }),
+    [],
+  );
 
   const createWatch = async (watch) => {
     const ref = inputRef?.current?.inputRef?.current;
@@ -136,7 +162,9 @@ const SearchBar = ({ server } = {}) => {
           </>
         }
         className="search-input"
-        disabled={creating || !server?.isConnected}
+        // not disabled while creating: a disabled field loses focus, and
+        // the second Enter of a double Enter would land nowhere
+        disabled={!server?.isConnected}
         input={
           <input
             data-lpignore="true"
@@ -149,7 +177,9 @@ const SearchBar = ({ server } = {}) => {
           />
         }
         loading={creating}
-        onKeyUp={(keyUpEvent) => (keyUpEvent.key === 'Enter' ? create() : '')}
+        onKeyUp={(keyUpEvent) => {
+          if (keyUpEvent.key === 'Enter') onEnter(keyUpEvent.target.value);
+        }}
         placeholder="Search phrase"
         ref={inputRef}
         size="big"

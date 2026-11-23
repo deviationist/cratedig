@@ -1,6 +1,7 @@
 import './Search.css';
 import { createSearchHubConnection } from '../../lib/hubFactory';
 import { usePullRefresh } from '../../lib/pullToRefresh';
+import { createEnterToSearch } from '../../lib/searchEnter';
 import * as library from '../../lib/searches';
 import * as watchLibrary from '../../lib/watches';
 import ErrorSegment from '../Shared/ErrorSegment';
@@ -10,14 +11,11 @@ import SearchDetail from './Detail/SearchDetail';
 import ClearSearchesModal from './List/ClearSearchesModal';
 import SearchList from './List/SearchList';
 import WatchModal from './WatchModal';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useHistory, useParams, useRouteMatch } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { Button, Icon, Input, Popup, Segment } from 'semantic-ui-react';
 import { v4 as uuidv4 } from 'uuid';
-
-// how soon after a search starts a second Enter counts as asking to open it
-const DOUBLE_ENTER_MS = 1_000;
 
 const Searches = ({ server } = {}) => {
   const [connecting, setConnecting] = useState(true);
@@ -33,9 +31,6 @@ const Searches = ({ server } = {}) => {
   const [confirmingClear, setConfirmingClear] = useState(false);
 
   const inputRef = useRef();
-  // the search the last Enter started, and when: a second Enter straight after
-  // opens it -- see onKeyUp on the input
-  const lastCreatedRef = useRef(null);
 
   const { id: searchId } = useParams();
   const history = useHistory();
@@ -146,8 +141,12 @@ const Searches = ({ server } = {}) => {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const openSearch = (id) =>
+    history.push(`${match.url.replace(`/${searchId}`, '')}/${id}`);
+
   // create a new search, and optionally navigate to it to display the details
-  // we do this if the user clicks the search icon, or repeats an existing search
+  // we do this if the user clicks the search icon, or repeats an existing search.
+  // resolves to the new search's id, or undefined when it could not be created
   const create = async ({ navigate = false, search } = {}) => {
     const ref = inputRef?.current?.inputRef?.current;
     const searchText = search || ref.value;
@@ -165,19 +164,35 @@ const Searches = ({ server } = {}) => {
       }
 
       setCreating(false);
-      lastCreatedRef.current = { at: Date.now(), id };
 
       if (navigate) {
-        history.push(`${match.url.replace(`/${searchId}`, '')}/${id}`);
+        openSearch(id);
       }
+
+      return id;
     } catch (createError) {
       console.error(createError);
       toast.error(
         createError?.response?.data ?? createError?.message ?? createError,
       );
       setCreating(false);
+      return undefined;
     }
   };
+
+  // Enter once searches and stays, twice opens it (lib/searchEnter). Made once,
+  // since it remembers the last Enter; it reaches the current render's
+  // functions through a ref
+  const latestRef = useRef();
+  latestRef.current = { create, openSearch };
+  const onEnter = useMemo(
+    () =>
+      createEnterToSearch({
+        create: (search) => latestRef.current.create({ search }),
+        open: (id) => latestRef.current.openSearch(id),
+      }),
+    [],
+  );
 
   // create the search, then watch it. a watch is an extension of a search rather
   // than a thing of its own -- what it has already reported is keyed on the
@@ -405,7 +420,9 @@ const Searches = ({ server } = {}) => {
             </>
           }
           className="search-input"
-          disabled={creating || !server?.isConnected}
+          // not disabled while creating: a disabled field loses focus, and
+          // the second Enter of a double Enter would land nowhere
+          disabled={!server?.isConnected}
           input={
             <input
               data-lpignore="true"
@@ -419,28 +436,7 @@ const Searches = ({ server } = {}) => {
           }
           loading={creating}
           onKeyUp={(keyUpEvent) => {
-            if (keyUpEvent.key !== 'Enter') return;
-
-            // Enter starts a search and stays here, clearing the field for
-            // the next; Enter again at once, on the field it just cleared,
-            // opens the one it started. The search icon does both in one go,
-            // but on a phone the keyboard's own key is where the thumb is.
-            const last = lastCreatedRef.current;
-            const empty = !keyUpEvent.target.value;
-
-            if (empty && last && Date.now() - last.at < DOUBLE_ENTER_MS) {
-              lastCreatedRef.current = null;
-              history.push(
-                `${match.url.replace(`/${searchId}`, '')}/${last.id}`,
-              );
-              return;
-            }
-
-            // a second Enter that came too late is not a request to search
-            // for nothing
-            if (empty) return;
-
-            create();
+            if (keyUpEvent.key === 'Enter') onEnter(keyUpEvent.target.value);
           }}
           placeholder="Search phrase"
           ref={inputRef}
