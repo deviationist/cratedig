@@ -106,6 +106,11 @@ export const create = ({ id, searchText }) => {
   return api.post('/searches', { id, searchText });
 };
 
+// the same search again, in place: same id, its responses replaced
+export const rerun = ({ id }) => {
+  return api.post(`/searches/${encodeURIComponent(id)}/rerun`);
+};
+
 export const getStatus = async ({ id, includeResponses = false }) => {
   return (
     await api.get(

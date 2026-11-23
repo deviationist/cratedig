@@ -2083,6 +2083,20 @@ namespace slskd
             public string DefaultFilter { get; init; } = string.Empty;
 
             /// <summary>
+            ///     Gets what the web UI's Search Again does.
+            /// </summary>
+            /// <remarks>
+            ///     <c>new</c> starts a new search with the same text, leaving the old one and its results in the list;
+            ///     <c>rerun</c> runs the same search again in place, replacing its results, so the list keeps one row
+            ///     for it. In place keeps the search's id, so a watch on it and the downloads that name it stay with it.
+            /// </remarks>
+            [Argument(default, "search-again")]
+            [EnvironmentVariable("SEARCH_AGAIN")]
+            [Description("what the web UI's Search Again does: new (a new search) or rerun (the same search, in place)")]
+            [RegularExpression("^(new|rerun)$", ErrorMessage = "must be new or rerun")]
+            public string SearchAgain { get; init; } = "new";
+
+            /// <summary>
             ///     Gets search watch options.
             /// </summary>
             [Validate]

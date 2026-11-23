@@ -295,9 +295,20 @@ namespace slskd.Search
         /// <param name="query">The search query.</param>
         /// <param name="scope">The search scope.</param>
         /// <param name="options">Search options.</param>
+        /// <param name="replaceExisting">
+        ///     Run the search with this <paramref name="id"/> again in place, replacing its previous run, rather than
+        ///     adding a new one. Refused while that search is still running or saving.
+        /// </param>
         /// <returns>The completed search.</returns>
         public async Task<Search> StartAsync(Guid id, SearchQuery query, SearchScope scope, SearchOptions options = null, bool replaceExisting = false)
         {
+            // a search is "complete" a moment before its run has saved its responses and let go of its id; replacing
+            // it in that window would let the old run's final save land on the new run's row
+            if (replaceExisting && CancellationTokens.ContainsKey(id))
+            {
+                throw new InvalidOperationException("The search is still running, or still saving its results");
+            }
+
             var token = Client.GetNextToken();
 
             var cancellationTokenSource = new CancellationTokenSource();

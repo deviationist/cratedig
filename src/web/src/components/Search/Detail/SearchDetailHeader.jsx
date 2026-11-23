@@ -7,6 +7,7 @@ import { Button, Header, Icon, Segment } from 'semantic-ui-react';
 const RefreshButton = ({
   creating,
   disabled,
+  inPlace,
   isSmallScreen,
   isTinyScreen,
   loaded,
@@ -20,6 +21,11 @@ const RefreshButton = ({
       icon={isSmallScreen && !isTinyScreen}
       loading={creating}
       onClick={() => onCreate({ navigate: true, search: searchText })}
+      title={
+        inPlace
+          ? 'Run this search again, replacing these results'
+          : 'Start a new search for the same text; this one stays in the list'
+      }
     >
       <Icon name="refresh" />
       {(!isSmallScreen || isTinyScreen) && 'Search Again'}
@@ -86,6 +92,7 @@ const SearchDetailHeader = ({
   onWatch,
   removing,
   search,
+  searchAgainInPlace,
   stopping,
   watch,
 }) => {
@@ -121,6 +128,7 @@ const SearchDetailHeader = ({
             <RefreshButton
               creating={creating}
               disabled={disabled}
+              inPlace={searchAgainInPlace}
               isSmallScreen={isSmallScreen}
               isTinyScreen={isTinyScreen}
               loaded={loaded}
@@ -154,6 +162,7 @@ const SearchDetailHeader = ({
           <RefreshButton
             creating={creating}
             disabled={disabled}
+            inPlace={searchAgainInPlace}
             isSmallScreen={isSmallScreen}
             isTinyScreen={isTinyScreen}
             loaded={loaded}
