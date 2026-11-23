@@ -9,6 +9,9 @@ import { Modal } from 'semantic-ui-react';
  * reasons are different enough to be worth telling apart: a watched search is
  * kept because deleting it would orphan its schedule, and a running one
  * because it cannot be deleted yet at all.
+ *
+ * Clear takes the focus when the dialog opens, so Enter (or Space) confirms
+ * the way it would on any focused button, and Escape still closes it.
  * @param {object} params
  * @param {boolean} params.busy - Whether the removals are under way.
  * @param {Function} params.onCancel - Closes without removing anything.
@@ -21,6 +24,7 @@ const ClearSearchesModal = ({ busy, onCancel, onConfirm, plan }) => (
     actions={[
       'Cancel',
       {
+        autoFocus: true,
         content: 'Clear',
         key: 'clear',
         loading: busy,
